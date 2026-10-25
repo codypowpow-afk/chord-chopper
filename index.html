@@ -63,13 +63,19 @@
       </div>
     </div>
     <div class="chops" id="chops"></div>
+    <div class="keys-head">
+      <span class="glabel">ONE-SHOT KEYS</span>
+      <span class="hint">Lit keys = notes found in the sample (they play the chop untouched) · others play the nearest chop repitched · keys A W S E D F T G Y H U J K O L P · Z / X octave</span>
+      <span id="kbOct" class="lcd-inline"></span>
+    </div>
+    <div class="piano" id="piano"></div>
   </section>
 
   <!-- 2 HARMONY -->
   <section class="panel">
     <div class="sec-head">
       <span class="num">2</span><span class="sec-title">KEY + PROGRESSION</span>
-      <span class="hint">Click a chord to hear it with your chops · N new progression · G glitch it · R new groove</span>
+      <span class="hint">Click a chord to hear it with your chops · N new progression · Shift+G glitch it · R new groove</span>
     </div>
     <div class="row">
       <div class="group">
@@ -89,7 +95,8 @@
       <button id="nextBtn" class="btn" title="Forward in history">▶</button>
     </div>
     <div class="row">
-      <button id="newProgBtn" class="btn hot" title="N">NEW PROGRESSION</button>
+      <button id="sampleProgBtn" class="btn" title="The progression detected in your sample's notes">FROM SAMPLE</button>
+      <button id="newProgBtn" class="btn hot" title="N: random progression from the style">NEW PROGRESSION</button>
       <button id="grooveBtn" class="btn" title="R: re-roll the layer patterns and chop picks">NEW GROOVE</button>
       <button id="glitchBtn" class="btn" title="G: random glitch settings">GLITCH IT</button>
       <div class="group">
@@ -107,9 +114,16 @@
   <section class="panel">
     <div class="sec-head">
       <span class="num">3</span><span class="sec-title">REMIX</span>
+      <div class="group inline"><span class="glabel">DRAW</span>
+        <div class="seg" data-key="drawLayer"><button data-v="chords">CHORDS</button><button data-v="lead">LEAD</button><button data-v="bass">BASS</button><button data-v="perc">PERC</button></div></div>
+      <div class="group inline"><span class="glabel">SNAP</span>
+        <div class="seg" data-key="snap" data-num><button data-v="2">1/8</button><button data-v="1">1/16</button><button data-v="0.5">1/32</button><button data-v="0">OFF</button></div></div>
+      <span id="editBadge" class="badge" hidden>EDITED</span>
+      <button id="resetEditsBtn" class="btn small" hidden title="Throw away manual edits and regenerate">RESET EDITS</button>
       <span class="legend"><i class="lg chords"></i>CHORDS <i class="lg lead"></i>LEAD <i class="lg bass"></i>BASS <i class="lg perc"></i>PERC <i class="lg rev"></i>REVERSED</span>
     </div>
     <div class="roll-wrap"><canvas id="roll"></canvas></div>
+    <div class="hint roll-hint">Click empty space to add a note (drag to stretch it) · drag a note to move it · drag its right edge to stretch · right-click or Alt-click to delete · hold Shift to ignore snap</div>
   </section>
 
   <!-- 4 LAYERS / GLITCH / FX -->

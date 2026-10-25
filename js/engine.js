@@ -14,24 +14,25 @@ window.CC = window.CC || {};
     chops: [], sel: 0, analyzing: false,
     chopMode: 'notes', sens: 0.5, grid: 16, minLen: 0.09,
     // harmony
-    key: 9, mode: 'min', style: 'lofi', progStr: '', history: [], histPos: -1,
+    key: 9, mode: 'min', style: 'pop', progStr: '', sampleProg: '', register: 60, history: [], histPos: -1,
     pat: { chords: 0, lead: 0, bass: 0, perc: 0 },
-    cycle: 0, roam: false, evolve: true,
+    cycle: 0, roam: false, evolve: false,
     // layers
     layers: {
       chords: { on: true, level: 0.7, oct: 0 },
       lead: { on: true, level: 0.75, oct: 0 },
       bass: { on: true, level: 0.8, oct: 0, src: 'chop' },
-      perc: { on: true, level: 0.5, oct: 0 },
+      perc: { on: false, level: 0.5, oct: 0 },
     },
     // glitch
-    stutter: 0.1, reverse: 0.25, scatter: 0.15, gate: 0.9, tape: 0.25,
-    pick: 'near', hold: true, bits: 16, rate: 0,
+    // non-essential processing defaults to off so chops sound like the original sample
+    stutter: 0, reverse: 0, scatter: 0, gate: 1, tape: 0,
+    pick: 'near', hold: false, bits: 16, rate: 0,
     // fx
-    cutoff: 1, res: 0.1, delay: 0.2, verb: 0.25, drive: 0, volume: 0.8,
-    bpm: 82, swing: 0.55,
-    // generator
-    seed: 1, gseed: 1, loopCount: 0, loop: null,
+    cutoff: 1, res: 0, delay: 0, verb: 0, drive: 0, volume: 0.8,
+    bpm: 104, swing: 0,
+    // generator; frozen = the loop has manual edits, so passive changes don't regenerate it
+    seed: 1, gseed: 1, loopCount: 0, loop: null, frozen: false,
     playing: false, exportLoops: 1,
   });
 
@@ -65,11 +66,24 @@ window.CC = window.CC || {};
       S.chopMode = 'onsets'; S.autoOnsets = true;
       E.rechop();
     }
+    E.fromSample();
+  };
+
+  // Key and chord progression heard in the chops; the progression becomes the current one.
+  E.fromSample = function () {
     const k = CC.detectKey(S.chops);
     if (k) { S.key = k.key; S.mode = k.mode; }
-    if (!S.progStr) E.newProg();
-    else E.generate();
+    S.sampleProg = CC.detectProg(S.chops, S.key, S.mode, S.src.sampleRate);
+    if (S.sampleProg) E.setProg(S.sampleProg);
+    else E.newProg();
+    return k;
   };
+
+  // Voice chords / lead around the sample's own pitch so chops are repitched as little as possible.
+  function updateRegister() {
+    const m = S.chops.filter((c) => c.pitched || c.note != null).map(E.chopMidi).sort((a, b) => a - b);
+    S.register = m.length ? Math.max(48, Math.min(76, Math.round(m[m.length >> 1]))) : 60;
+  }
 
   E.rechop = function () {
     if (!S.src) return;
@@ -80,6 +94,7 @@ window.CC = window.CC || {};
     if (!raw.length) raw = [{ start: 0, end: S.src.length }];
     S.chops = raw.map((c) => E.analyze({ start: c.start, end: c.end, on: true, note: null }));
     S.sel = Math.min(S.sel, S.chops.length - 1);
+    updateRegister();
   };
   E.analyze = (c) => CC.analyzeChop(S.src, S.tr, S.x, c);
 
@@ -120,7 +135,7 @@ window.CC = window.CC || {};
       if (S.history.length > 40) S.history.shift();
       S.histPos = S.history.length - 1;
     }
-    E.generate();
+    E.regen();
   };
   E.newProg = function () {
     const pool = E.pool();
@@ -137,14 +152,13 @@ window.CC = window.CC || {};
     return true;
   };
 
-  // A style is a preset: tempo, swing, glitch amounts and pattern set. keepFeel keeps the
-  // user's tempo / swing / glitch (used when roaming styles mid-play).
+  // A style is a preset: tempo, swing, pattern set and progressions. Glitch amounts stay where the
+  // user put them. keepFeel keeps the user's tempo / swing (used when roaming styles mid-play).
   E.setStyle = function (id, keepFeel) {
     S.style = id;
     const st = E.style();
     if (!keepFeel) {
       S.bpm = st.bpm; S.swing = st.swing;
-      Object.assign(S, st.glitch);
     }
     LAYERS.forEach((l) => { S.pat[l] = 0; });
     E.updateChain();
@@ -153,7 +167,7 @@ window.CC = window.CC || {};
     const st = E.style();
     S.seed = (Math.random() * 1e9) >>> 0;
     LAYERS.forEach((l) => { S.pat[l] = Math.floor(Math.random() * st[l].length); });
-    E.generate();
+    E.regen();
   };
   E.glitchIt = function () {
     const r = Math.random;
@@ -163,7 +177,7 @@ window.CC = window.CC || {};
     S.gate = Math.round((0.35 + r() * 0.65) * 100) / 100;
     S.tape = Math.round(r() * 40) / 100;
     S.gseed = (r() * 1e9) >>> 0;
-    E.generate();
+    E.regen();
   };
 
   // ---------- generator ----------
@@ -189,7 +203,9 @@ window.CC = window.CC || {};
   }
   const near = (pc, base) => { let d = (((pc - base) % 12) + 12) % 12; if (d > 6) d -= 12; return base + d; };
 
-  E.generate = function () {
+  E.regen = function () { S.frozen = false; return E.generate(true); };
+  E.generate = function (force) {
+    if (S.frozen && !force && S.loop) return S.loop;
     const st = E.style();
     const chords = CC.parseProg(S.progStr || E.pool()[0], S.key, S.mode, st.beats);
     let pos = 0;
@@ -245,7 +261,7 @@ window.CC = window.CC || {};
     // chords: voice-led stabs, one chop per voice
     const voicings = [];
     let prev = null;
-    timeline.forEach((c) => { prev = CC.voice(c, 55 + 12 * L.chords.oct, prev); voicings.push(prev); });
+    timeline.forEach((c) => { prev = CC.voice(c, S.register - 5 + 12 * L.chords.oct, prev); voicings.push(prev); });
     walk(pat('chords'), (s, c, d) => {
       const notes = voicings[chordIdx[s]], used = [], g = grp++;
       notes.forEach((m, k) => {
@@ -257,7 +273,7 @@ window.CC = window.CC || {};
     });
 
     // lead: arp / melody over the chord-tone ladder
-    const leadBase = 60 + 12 * L.lead.oct;
+    const leadBase = S.register + 12 * L.lead.oct;
     walk(pat('lead'), (s, c, d, ch) => {
       const pcs = Array.from(new Set(ch.ints.map((i) => i % 12))).sort((a, b) => a - b);
       const idx = c === 'r' ? rng.int(6) : parseInt(c, 10);
@@ -354,10 +370,11 @@ window.CC = window.CC || {};
     c.input = ctx.createGain();
     LAYERS.forEach((l) => { c.bus[l] = ctx.createGain(); c.bus[l].connect(c.input); });
     c.preview = ctx.createGain(); c.preview.connect(c.input);
+    c.keys = ctx.createGain(); c.keys.connect(c.input);
     c.shaper = ctx.createWaveShaper(); c.shaper.oversample = '2x';
     c.filter = ctx.createBiquadFilter(); c.filter.type = 'lowpass';
     c.comp = ctx.createDynamicsCompressor();
-    c.comp.threshold.value = -14; c.comp.ratio.value = 3; c.comp.attack.value = 0.005; c.comp.release.value = 0.15;
+    c.comp.threshold.value = 0; c.comp.ratio.value = 1; // transparent unless DRIVE pushes it c.comp.attack.value = 0.005; c.comp.release.value = 0.15;
     c.dry = ctx.createGain();
     c.dSend = ctx.createGain();
     c.dl = ctx.createDelay(2); c.dr = ctx.createDelay(2);
@@ -582,13 +599,72 @@ window.CC = window.CC || {};
       // chord layer silent on this chord: voice it fresh with the nearest chops
       const P = pools();
       if (!P.pitched.length) return;
-      CC.voice(ch, 55, null).forEach((m) => {
+      CC.voice(ch, S.register - 5, null).forEach((m) => {
         let best = P.pitched[0];
         P.pitched.forEach((o) => { if (Math.abs(m - E.chopMidi(o.c)) < Math.abs(m - E.chopMidi(best.c))) best = o; });
         const v = E.playEvent(E.ctx, E.chain.preview, { layer: 'chords', chop: best.i, midi: m, dur, vel: 0.45, offs: 0, pan: 0 }, t, E.stepDur());
         if (v) previewVoices.push(v);
       });
     }
+  };
+
+  // ---------- manual edits ----------
+  // The roll edits S.loop.events directly; rebucket re-indexes them for the scheduler and
+  // freezes the loop so slider / pattern changes don't throw the edits away.
+  E.rebucket = function () {
+    const L = S.loop;
+    L.events.sort((a, b) => a.step - b.step);
+    L.buckets = [];
+    for (let i = 0; i < L.total; i++) L.buckets.push([]);
+    L.events.forEach((e) => { L.buckets[Math.max(0, Math.min(L.total - 1, Math.floor(e.step)))].push(e); });
+    S.frozen = true;
+  };
+  E.nearestChop = function (midi) {
+    const pool = pools().pitched;
+    if (!pool.length) return -1;
+    let best = pool[0];
+    pool.forEach((o) => { if (Math.abs(midi - E.chopMidi(o.c)) < Math.abs(midi - E.chopMidi(best.c))) best = o; });
+    return best.i;
+  };
+  let editGrp = 1e6;
+  E.newEvent = function (layer, step, midi, dur) {
+    const P = pools();
+    if (!P.pitched.length) return null;
+    const perc = layer === 'perc';
+    return {
+      layer, step, dur, midi: perc ? null : midi,
+      chop: perc ? P.perc[Math.floor(Math.random() * P.perc.length)].i : E.nearestChop(midi),
+      vel: layer === 'chords' ? 0.5 : 0.8, pan: 0, grp: editGrp++, rev: false, offs: 0, tape: false,
+      synth: layer === 'bass' && S.layers.bass.src === 'sub',
+    };
+  };
+  E.previewEvent = function (e) {
+    E.init(); E.resume();
+    const t = E.ctx.currentTime + 0.005;
+    stopPreview(t);
+    const v = E.playEvent(E.ctx, E.chain.preview, Object.assign({}, e, { dur: Math.min(e.dur, 4), tape: false }), t, E.stepDur());
+    if (v) previewVoices.push(v);
+  };
+
+  // ---------- one-shot keys ----------
+  // A key with chops detected at its note plays them as-is (round robin); other keys play the
+  // nearest chop repitched. One-shots ring out to the end of the chop.
+  const keyVoices = {};
+  let shotRR = 0;
+  E.shotChops = (midi) => S.chops.map((c, i) => ({ c, i }))
+    .filter((o) => (o.c.pitched || o.c.note != null) && Math.round(E.chopMidi(o.c)) === midi);
+  E.playShot = function (midi) {
+    E.init(); E.resume();
+    if (!S.chops.length || !S.proc) return -1;
+    const t = E.ctx.currentTime + 0.003;
+    E.choke(keyVoices[midi], t);
+    const exact = E.shotChops(midi);
+    let chop, m = null;
+    if (exact.length) chop = exact[shotRR++ % exact.length].i;
+    else { chop = E.nearestChop(midi); m = midi; }
+    if (chop < 0) return -1;
+    keyVoices[midi] = E.playEvent(E.ctx, E.chain.keys, { layer: 'perc', chop, midi: m, dur: 1e4, vel: 0.9, offs: 0 }, t, E.stepDur());
+    return chop;
   };
 
   // ---------- offline render ----------

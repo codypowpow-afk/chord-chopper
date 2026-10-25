@@ -30,22 +30,29 @@
     renderKeys(); renderStyles(); renderLayers();
   }
 
+  // Passive changes regenerate the loop unless it has manual edits.
+  function softRegen() {
+    if (S.frozen) { status('The remix has manual edits: press RESET EDITS to apply this change.'); return; }
+    E.generate(); drawRoll();
+  }
+
   let rechopTimer = null;
   function rechopSoon() {
     clearTimeout(rechopTimer);
     rechopTimer = setTimeout(() => {
       if (!S.src) return;
-      E.rechop(); E.generate();
-      renderChops(); drawWave(); renderProg(); drawRoll();
+      E.rechop(); E.regen();
+      renderChops(); drawWave(); renderPiano(); renderProg(); drawRoll(); syncEdit();
       status(`${S.chops.length} chops (${S.chops.filter((c) => c.pitched).length} pitched)`);
     }, 120);
   }
 
   function onKeyChange(key) {
+    if (key === 'drawLayer' || key === 'snap') return;
     if (['chopMode', 'grid', 'sens', 'minLen'].includes(key)) { rechopSoon(); return; }
     if (key === 'mode') { E.newProg(); refreshHarmony(); return; }
     if (key === 'bits' || key === 'rate') { E.init(); E.rebuildProcessed(); return; }
-    if (key === 'pick' || key === 'cycle') { if (key === 'pick') { E.generate(); drawRoll(); } return; }
+    if (key === 'pick' || key === 'cycle') { if (key === 'pick') softRegen(); return; }
     E.updateChain();
   }
 
@@ -66,7 +73,7 @@
       S[key] = parseFloat(el.value);
       const out = document.querySelector(`[data-out="${key}"]`);
       if (out) out.textContent = fmt(key, S[key]);
-      if (el.hasAttribute('data-regen')) { E.generate(); drawRoll(); } else onKeyChange(key);
+      if (el.hasAttribute('data-regen')) softRegen(); else onKeyChange(key);
     });
   });
   $('bpm').addEventListener('change', () => {
@@ -86,7 +93,7 @@
       KEY_NAMES.forEach((n, k) => {
         const b = document.createElement('button');
         b.textContent = n;
-        b.onclick = () => { S.key = k; E.generate(); refreshHarmony(); };
+        b.onclick = () => { S.key = k; E.regen(); refreshHarmony(); };
         seg.appendChild(b);
       });
     }
@@ -124,30 +131,36 @@
       d.onclick = () => E.previewChord(k);
       box.appendChild(d);
     });
+    $('sampleProgBtn').classList.toggle('on', !!S.sampleProg && S.progStr === S.sampleProg);
     $('prevBtn').disabled = S.histPos <= 0;
     $('nextBtn').disabled = S.histPos >= S.history.length - 1;
   }
-  function refreshHarmony() { renderKeys(); renderStyles(); renderLayers(); renderProg(); drawRoll(); syncSeg('mode'); }
+  function refreshHarmony() { renderKeys(); renderStyles(); renderLayers(); renderProg(); drawRoll(); syncSeg('mode'); syncEdit(); }
   function syncSeg(key) {
     const seg = document.querySelector(`.seg[data-key="${key}"]`);
     seg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', String(S[key]) === b.dataset.v));
   }
 
   $('newProgBtn').onclick = () => { E.newProg(); refreshHarmony(); };
-  $('grooveBtn').onclick = () => { E.newGroove(); renderLayers(); drawRoll(); };
-  $('glitchBtn').onclick = () => { E.glitchIt(); syncControls(); drawRoll(); };
+  $('grooveBtn').onclick = () => { E.newGroove(); renderLayers(); drawRoll(); syncEdit(); };
+  $('glitchBtn').onclick = () => { E.glitchIt(); syncControls(); drawRoll(); syncEdit(); };
   $('prevBtn').onclick = () => { if (E.histStep(-1)) { syncControls(); refreshHarmony(); } };
   $('nextBtn').onclick = () => { if (E.histStep(1)) { syncControls(); refreshHarmony(); } };
   $('detectBtn').onclick = () => {
-    const k = CC.detectKey(S.chops);
-    if (!k) { status('No pitched chops to detect a key from.'); return; }
-    S.key = k.key; S.mode = k.mode;
-    E.newProg(); refreshHarmony();
-    status(`Detected key: ${KEY_NAMES[k.key]} ${k.mode === 'maj' ? 'major' : 'minor'}`);
+    if (!S.src) return;
+    const k = E.fromSample();
+    refreshHarmony();
+    status(k ? `Detected ${keyText()}: ${S.sampleProg}` : 'No pitched chops to detect a key from.');
   };
+  $('sampleProgBtn').onclick = () => {
+    if (!S.sampleProg) { status(S.src ? 'No progression found in this sample.' : 'Load a sample first.'); return; }
+    E.setProg(S.sampleProg); refreshHarmony();
+    status(`Progression from the sample: ${S.sampleProg}`);
+  };
+  const keyText = () => `${KEY_NAMES[S.key]} ${S.mode === 'maj' ? 'major' : 'minor'}`;
 
   E.onChange = (changed) => {
-    if (changed) { renderStyles(); renderLayers(); renderProg(); }
+    if (changed) { renderStyles(); renderLayers(); renderProg(); syncEdit(); }
     drawRoll();
   };
 
@@ -168,21 +181,21 @@
         <div class="ctl"><button class="btn small onoff ${L.on ? 'on' : ''}">${L.on ? 'ON' : 'OFF'}</button>
         <input type="range" min="0" max="1" step="0.01" value="${L.level}" title="Level">
         <span class="mini">PATTERN</span><div class="seg pats">${pats}</div>${octs}${src}</div>`;
-      row.querySelector('.onoff').onclick = () => { L.on = !L.on; E.updateChain(); renderLayers(); };
+      row.querySelector('.onoff').onclick = () => { L.on = !L.on; E.updateChain(); renderLayers(); drawRoll(); };
       row.querySelector('input').oninput = (ev) => { L.level = parseFloat(ev.target.value); E.updateChain(); };
       row.querySelector('.pats').onclick = (ev) => {
         const b = ev.target.closest('button'); if (!b) return;
-        S.pat[l] = +b.dataset.p; E.generate(); renderLayers(); drawRoll();
+        S.pat[l] = +b.dataset.p; renderLayers(); softRegen();
       };
       const oct = row.querySelector('.oct');
       if (oct) oct.onclick = (ev) => {
         const b = ev.target.closest('button'); if (!b) return;
-        L.oct = +b.dataset.o; E.generate(); renderLayers(); drawRoll();
+        L.oct = +b.dataset.o; renderLayers(); softRegen();
       };
       const sr = row.querySelector('.src');
       if (sr) sr.onclick = (ev) => {
         const b = ev.target.closest('button'); if (!b) return;
-        L.src = b.dataset.s; E.generate(); renderLayers(); drawRoll();
+        L.src = b.dataset.s; renderLayers(); softRegen();
       };
       box.appendChild(row);
     });
@@ -213,7 +226,7 @@
       if (pitched) d.style.setProperty('--pc', pcColor(Math.round(m)));
       d.title = 'Click: hear · Ctrl/Shift-click: toggle in pool';
       d.onclick = (ev) => {
-        if (ev.ctrlKey || ev.shiftKey) { c.on = !c.on; E.generate(); drawRoll(); }
+        if (ev.ctrlKey || ev.shiftKey) { c.on = !c.on; softRegen(); }
         else E.previewChop(i);
         S.sel = i; renderChops(); drawWave(); renderChopInfo();
       };
@@ -232,14 +245,14 @@
   noteSel.onchange = () => {
     const c = S.chops[S.sel]; if (!c) return;
     c.note = noteSel.value === '' ? null : parseInt(noteSel.value, 10);
-    E.generate(); renderChops(); drawWave(); drawRoll();
+    renderChops(); drawWave(); renderPiano(); softRegen();
   };
   $('poolBtn').onclick = () => {
     const c = S.chops[S.sel]; if (!c) return;
-    c.on = !c.on; E.generate(); renderChops(); drawRoll();
+    c.on = !c.on; renderChops(); softRegen();
   };
-  $('allInBtn').onclick = () => { S.chops.forEach((c) => { c.on = true; }); E.generate(); renderChops(); drawRoll(); };
-  $('pitchedBtn').onclick = () => { S.chops.forEach((c) => { c.on = c.pitched || c.note != null; }); E.generate(); renderChops(); drawRoll(); };
+  $('allInBtn').onclick = () => { S.chops.forEach((c) => { c.on = true; }); renderChops(); softRegen(); };
+  $('pitchedBtn').onclick = () => { S.chops.forEach((c) => { c.on = c.pitched || c.note != null; }); renderChops(); softRegen(); };
 
   // ---------- waveform ----------
   const wave = $('wave');
@@ -314,74 +327,237 @@
     const i = E.splitAt(sampleAt(ev));
     if (i >= 0) { S.sel = i + 1; afterEdit(); }
   });
-  function afterEdit() { E.generate(); renderChops(); drawWave(); drawRoll(); status(`${S.chops.length} chops`); }
+  function afterEdit() { E.regen(); renderChops(); drawWave(); renderPiano(); drawRoll(); syncEdit(); status(`${S.chops.length} chops`); }
 
-  // ---------- remix roll ----------
+  // ---------- one-shot keys ----------
+  const PIANO_KEYS = { a: 0, w: 1, s: 2, e: 3, d: 4, f: 5, t: 6, g: 7, y: 8, h: 9, u: 10, j: 11, k: 12, o: 13, l: 14, p: 15 };
+  let kbBase = null; // computer-keyboard root (a C)
+  let piano = { lo: 48, hi: 72 };
+  const isBlack = (m) => [1, 3, 6, 8, 10].includes(((m % 12) + 12) % 12);
+  function renderPiano() {
+    const box = $('piano');
+    const found = S.chops.filter((c) => c.pitched || c.note != null).map((c) => Math.round(E.chopMidi(c)));
+    let lo = found.length ? Math.floor(Math.min(...found) / 12) * 12 : 48;
+    let hi = found.length ? Math.ceil((Math.max(...found) + 1) / 12) * 12 : 72;
+    if (hi - lo < 24) hi = lo + 24;
+    if (hi - lo > 48) { const mid = Math.round((lo + hi) / 24) * 12; lo = mid - 24; hi = mid + 24; }
+    piano = { lo, hi };
+    if (kbBase == null) kbBase = lo;
+    const whites = [];
+    for (let m = lo; m <= hi; m++) if (!isBlack(m)) whites.push(m);
+    const ww = 100 / whites.length;
+    box.innerHTML = '';
+    let wi = 0;
+    for (let m = lo; m <= hi; m++) {
+      const d = document.createElement('div');
+      const n = E.chopMidi ? E.shotChops(m).length : 0;
+      if (isBlack(m)) { d.className = 'bk'; d.style.left = `calc(${wi * ww}% - ${ww * 0.32}%)`; d.style.width = `${ww * 0.64}%`; }
+      else { d.className = 'wk'; d.style.left = `${wi * ww}%`; d.style.width = `${ww}%`; wi++; }
+      if (n) { d.classList.add('has'); d.style.setProperty('--kc', pcColor(m)); }
+      d.dataset.m = m;
+      const label = m % 12 === 0 || n ? CC.midiName(m, flats()) : '';
+      d.innerHTML = `${n > 1 ? `<span class="cnt">×${n}</span>` : ''}<span>${label}</span>`;
+      d.title = n ? `${CC.midiName(m, flats())}: ${n} chop${n > 1 ? 's' : ''} from the sample` : `${CC.midiName(m, flats())}: nearest chop repitched`;
+      box.appendChild(d);
+    }
+    $('kbOct').textContent = `KEYS ${CC.midiName(kbBase)}–${CC.midiName(kbBase + 15)}`;
+  }
+  function pressKey(m) {
+    if (!S.src) { status('Load a sample first.'); return; }
+    const chop = E.playShot(m);
+    const el = $('piano').querySelector(`[data-m="${m}"]`);
+    if (el) { el.classList.add('down'); setTimeout(() => el.classList.remove('down'), 140); }
+    const pad = $('chops').children[chop];
+    if (pad) { pad.classList.add('flash'); setTimeout(() => pad.classList.remove('flash'), 140); }
+  }
+  let pianoDown = false;
+  $('piano').addEventListener('pointerdown', (ev) => {
+    const k = ev.target.closest('[data-m]'); if (!k) return;
+    pianoDown = true; pressKey(+k.dataset.m);
+    ev.preventDefault();
+  });
+  $('piano').addEventListener('pointerover', (ev) => {
+    if (!pianoDown || !(ev.buttons & 1)) return;
+    const k = ev.target.closest('[data-m]'); if (k) pressKey(+k.dataset.m);
+  });
+  window.addEventListener('pointerup', () => { pianoDown = false; });
+
+  // ---------- remix roll (editable) ----------
   const roll = $('roll');
   const LAYER_COL = { chords: '#3de0ff', lead: '#ff3d8b', bass: '#ffc94a', perc: '#a59bbd' };
-  let rollCache = null;
+  let rollCache = null, rollDirty = true, lastStep = null;
+  function syncEdit() {
+    $('editBadge').hidden = !S.frozen;
+    $('resetEditsBtn').hidden = !S.frozen;
+  }
+  $('resetEditsBtn').onclick = () => { E.regen(); rollDirty = true; drawRoll(); syncEdit(); status('Edits cleared, remix regenerated.'); };
+
+  // Shared by painting and hit-testing. The pitch range is fixed per loop so it doesn't jump while editing.
+  function geom(loop, w, h, dpr) {
+    const top = 18 * dpr, percH = 18 * dpr, bottom = h - percH - 4 * dpr;
+    if (!loop.view) {
+      const ms = loop.events.filter((e) => e.midi != null).map((e) => e.midi)
+        .concat(S.chops.filter((c) => c.pitched).map((c) => Math.round(E.chopMidi(c))));
+      let lo = ms.length ? Math.min(...ms) - 3 : 36, hi = ms.length ? Math.max(...ms) + 3 : 84;
+      if (hi - lo < 24) { const mid = (lo + hi) / 2; lo = Math.floor(mid - 12); hi = lo + 24; }
+      loop.view = { lo, hi };
+    }
+    const { lo, hi } = loop.view;
+    const sx = w / loop.total, sy = (bottom - top) / (hi - lo);
+    return { top, bottom, percTop: h - percH, sx, sy, lo, hi, Y: (m) => bottom - (m - lo) * sy, M: (y) => lo + (bottom - y) / sy };
+  }
+  function noteRect(e, g, dpr) {
+    if (e.midi == null) return { x: e.step * g.sx, y: g.percTop, w: Math.max(3 * dpr, Math.min(e.dur, 1) * g.sx * 0.8), h: g.sy > 0 ? 16 * dpr : 0 };
+    return { x: e.step * g.sx, y: g.Y(e.midi) - g.sy, w: Math.max(3 * dpr, e.dur * g.sx - dpr), h: Math.max(2 * dpr, g.sy - dpr) };
+  }
+
   function drawRoll(step) {
     const { w, h, dpr } = fitCanvas(roll);
     const g = roll.getContext('2d');
     const loop = S.loop;
-    if (step == null || !rollCache || rollCache.w !== w || rollCache.h !== h || rollCache.loop !== loop) {
+    if (step === undefined) rollDirty = true;
+    if (rollDirty || !rollCache || rollCache.w !== w || rollCache.h !== h || rollCache.loop !== loop) {
       const off = document.createElement('canvas');
       off.width = w; off.height = h;
       const o = off.getContext('2d');
       o.fillStyle = '#0c1014'; o.fillRect(0, 0, w, h);
-      if (loop && loop.events.length) paintRoll(o, loop, w, h, dpr);
+      if (loop && S.chops.length) paintRoll(o, loop, w, h, dpr);
       else {
         o.fillStyle = '#4f8a69'; o.font = `700 ${13 * dpr}px Consolas, monospace`; o.textAlign = 'center';
         o.fillText(S.src ? 'No usable chops in the pool' : 'Load a sample to hear it remixed onto chords', w / 2, h / 2);
       }
       rollCache = { w, h, loop, img: off };
+      rollDirty = false;
     }
     g.drawImage(rollCache.img, 0, 0);
-    if (step != null && loop) {
-      const x = (step / loop.total) * w;
-      g.fillStyle = 'rgba(255,255,255,0.85)'; g.fillRect(x, 0, Math.max(1, dpr), h);
+    if (step != null) lastStep = step;
+    if (S.playing && lastStep != null && loop) {
+      g.fillStyle = 'rgba(255,255,255,0.85)'; g.fillRect((lastStep / loop.total) * w, 0, Math.max(1, dpr), h);
     }
   }
   function paintRoll(o, loop, w, h, dpr) {
-    const top = 18 * dpr, percH = 16 * dpr, bottom = h - percH - 4 * dpr;
-    const pitched = loop.events.filter((e) => e.midi != null);
-    let lo = Math.min(...pitched.map((e) => e.midi)), hi = Math.max(...pitched.map((e) => e.midi));
-    if (!isFinite(lo)) { lo = 36; hi = 84; }
-    lo -= 2; hi += 2;
-    const sx = w / loop.total, sy = (bottom - top) / Math.max(12, hi - lo);
-    const Y = (m) => bottom - (m - lo) * sy;
-    // chord regions + bar lines
+    const G = geom(loop, w, h, dpr);
     loop.chords.forEach((c, k) => {
       o.fillStyle = k % 2 ? 'rgba(255,255,255,0.025)' : 'rgba(255,255,255,0.05)';
-      o.fillRect(c.start * sx, 0, c.len * sx, h);
+      o.fillRect(c.start * G.sx, 0, c.len * G.sx, h);
       o.fillStyle = '#7dffb0'; o.font = `700 ${11 * dpr}px Consolas, monospace`;
-      o.fillText(c.name, c.start * sx + 4 * dpr, 13 * dpr);
+      o.fillText(c.name, c.start * G.sx + 4 * dpr, 13 * dpr);
     });
-    for (let s = 0; s <= loop.total; s += 4) {
-      o.fillStyle = s % 16 ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.16)';
-      o.fillRect(s * sx, top - 4 * dpr, Math.max(1, dpr * (s % 16 ? 0.5 : 1)), h);
+    for (let m = Math.ceil(G.lo); m < G.hi; m++) {
+      if (m % 12 === S.key) { o.fillStyle = 'rgba(125,255,176,0.08)'; o.fillRect(0, G.Y(m) - G.sy, w, G.sy); }
+      else if (isBlack(m)) { o.fillStyle = 'rgba(0,0,0,0.25)'; o.fillRect(0, G.Y(m) - G.sy, w, G.sy); }
     }
-    for (let m = Math.ceil(lo); m <= hi; m++) {
-      if (m % 12 === S.key) { o.fillStyle = 'rgba(125,255,176,0.07)'; o.fillRect(0, Y(m) - sy, w, sy); }
+    for (let s = 0; s <= loop.total; s++) {
+      o.fillStyle = s % 16 === 0 ? 'rgba(255,255,255,0.18)' : s % 4 === 0 ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.025)';
+      o.fillRect(s * G.sx, G.top - 4 * dpr, Math.max(1, dpr * (s % 16 ? 0.5 : 1)), h);
     }
+    o.fillStyle = 'rgba(255,255,255,0.04)'; o.fillRect(0, G.percTop, w, h - G.percTop);
     ['bass', 'chords', 'lead'].forEach((l) => {
-      loop.events.filter((e) => e.layer === l).forEach((e) => {
-        const x = e.step * sx, y = Y(e.midi) - sy, ww = Math.max(2 * dpr, e.dur * sx - dpr), hh = Math.max(2 * dpr, sy - dpr);
-        o.globalAlpha = 0.45 + e.vel * 0.55;
+      loop.events.filter((e) => e.layer === l && e.midi != null).forEach((e) => {
+        const r = noteRect(e, G, dpr);
+        o.globalAlpha = (0.45 + e.vel * 0.55) * (S.layers[l].on ? 1 : 0.22); // muted layers stay visible but dim
         o.fillStyle = LAYER_COL[l];
-        o.fillRect(x, y, ww, hh);
-        if (e.rev) { o.fillStyle = 'rgba(12,16,20,0.55)'; for (let k = 0; k < ww; k += 4 * dpr) o.fillRect(x + k, y, 2 * dpr, hh); }
-        if (e.tape) { o.fillStyle = 'rgba(255,255,255,0.6)'; o.fillRect(x, y + hh - dpr, ww, dpr); }
+        o.fillRect(r.x, r.y, r.w, r.h);
+        if (e.rev) { o.fillStyle = 'rgba(12,16,20,0.55)'; for (let k = 0; k < r.w; k += 4 * dpr) o.fillRect(r.x + k, r.y, 2 * dpr, r.h); }
+        if (e.tape) { o.fillStyle = 'rgba(255,255,255,0.6)'; o.fillRect(r.x, r.y + r.h - dpr, r.w, dpr); }
+        if (e === drag.e) { o.globalAlpha = 1; o.strokeStyle = '#fff'; o.lineWidth = dpr; o.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1); }
       });
     });
-    o.globalAlpha = 1;
-    loop.events.filter((e) => e.layer === 'perc').forEach((e) => {
-      o.globalAlpha = 0.4 + e.vel * 0.6;
+    loop.events.filter((e) => e.midi == null).forEach((e) => {
+      const r = noteRect(e, G, dpr);
+      o.globalAlpha = (0.4 + e.vel * 0.6) * (S.layers.perc.on ? 1 : 0.22);
       o.fillStyle = LAYER_COL.perc;
-      o.fillRect(e.step * sx, h - percH, Math.max(2 * dpr, sx * 0.7), percH - 2 * dpr);
+      o.fillRect(r.x, r.y, r.w, r.h - 2 * dpr);
     });
     o.globalAlpha = 1;
   }
+
+  // ---- editing ----
+  const drag = { e: null };
+  const rollPos = (ev) => {
+    const r = roll.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    return { x: (ev.clientX - r.left) * dpr, y: (ev.clientY - r.top) * dpr, dpr, G: geom(S.loop, roll.width, roll.height, dpr) };
+  };
+  function hitTest(p) {
+    const ev = S.loop.events;
+    const order = p.y >= p.G.percTop ? ['perc'] : ['lead', 'chords', 'bass'];
+    for (const l of order) {
+      for (let i = ev.length - 1; i >= 0; i--) {
+        const e = ev[i];
+        if (l === 'perc' ? e.midi != null : e.layer !== l || e.midi == null) continue;
+        const r = noteRect(e, p.G, p.dpr);
+        // pitched notes hit by row (same math as placing a note) so boundaries never disagree
+        const inY = e.midi == null ? p.y >= r.y && p.y <= r.y + r.h : e.midi === Math.floor(p.G.M(p.y));
+        if (p.x >= r.x && p.x <= r.x + r.w && inY) {
+          return { e, edge: e.midi != null && r.w > 10 * p.dpr && p.x > r.x + r.w - 7 * p.dpr };
+        }
+      }
+    }
+    return null;
+  }
+  const snapTo = (v, free) => (free || !S.snap ? Math.round(v * 4) / 4 : Math.round(v / S.snap) * S.snap);
+  function removeEvent(e) {
+    const i = S.loop.events.indexOf(e);
+    if (i >= 0) S.loop.events.splice(i, 1);
+    E.rebucket(); rollDirty = true; drawRoll(lastStep); syncEdit();
+  }
+  roll.addEventListener('contextmenu', (ev) => {
+    ev.preventDefault();
+    if (!S.loop || !S.chops.length) return;
+    const hit = hitTest(rollPos(ev));
+    if (hit) removeEvent(hit.e);
+  });
+  roll.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 0 || !S.loop || !S.chops.length) return;
+    const p = rollPos(ev), hit = hitTest(p);
+    if (hit && ev.altKey) { removeEvent(hit.e); return; }
+    let e, mode;
+    if (hit) { e = hit.e; mode = hit.edge ? 'resize' : 'move'; }
+    else {
+      const perc = p.y >= p.G.percTop || S.drawLayer === 'perc';
+      const unit = S.snap || 0.25;
+      const step = Math.max(0, Math.min(S.loop.total - unit, Math.floor(p.x / p.G.sx / unit) * unit));
+      const layer = perc ? 'perc' : S.drawLayer;
+      e = E.newEvent(layer, step, Math.floor(p.G.M(p.y)), layer === 'chords' ? 4 : perc ? 1 : Math.max(unit, 1));
+      if (!e) { status('No chops in the pool to draw with.'); return; }
+      S.loop.events.push(e);
+      mode = perc ? 'move' : 'resize';
+    }
+    drag.e = e; drag.mode = mode; drag.x0 = p.x; drag.y0 = p.y;
+    drag.step0 = e.step; drag.midi0 = e.midi; drag.dur0 = e.dur; drag.moved = false;
+    roll.setPointerCapture(ev.pointerId);
+    E.previewEvent(e);
+    rollDirty = true; drawRoll(lastStep);
+  });
+  roll.addEventListener('pointermove', (ev) => {
+    if (!S.loop || !S.chops.length) return;
+    const p = rollPos(ev);
+    if (!drag.e) {
+      const hit = hitTest(p);
+      roll.style.cursor = hit ? (hit.edge ? 'ew-resize' : 'grab') : 'crosshair';
+      return;
+    }
+    const e = drag.e, total = S.loop.total, dx = (p.x - drag.x0) / p.G.sx;
+    if (Math.abs(p.x - drag.x0) + Math.abs(p.y - drag.y0) > 3) drag.moved = true;
+    if (drag.mode === 'move') {
+      e.step = Math.max(0, Math.min(total - 0.25, snapTo(drag.step0 + dx, ev.shiftKey)));
+      if (e.midi != null) {
+        const m = drag.midi0 + Math.round((drag.y0 - p.y) / p.G.sy);
+        if (m !== e.midi) { e.midi = m; E.previewEvent(e); }
+      }
+    } else {
+      const min = ev.shiftKey || !S.snap ? 0.25 : S.snap;
+      e.dur = Math.max(min, Math.min(total - e.step, snapTo(drag.dur0 + dx, ev.shiftKey)));
+    }
+    rollDirty = true; drawRoll(lastStep);
+  });
+  const endDrag = () => {
+    if (!drag.e) return;
+    drag.e = null;
+    E.rebucket(); rollDirty = true; drawRoll(lastStep); syncEdit();
+  };
+  roll.addEventListener('pointerup', endDrag);
+  roll.addEventListener('pointercancel', endDrag);
 
   // ---------- animation ----------
   const scope = $('scope');
@@ -440,11 +616,14 @@
   }
   $('playBtn').onclick = togglePlay;
   document.addEventListener('keydown', (ev) => {
-    if (ev.target.matches('input[type=number], select')) return;
+    if (ev.target.matches && ev.target.matches('input[type=number], select')) return;
     if (ev.code === 'Space') { ev.preventDefault(); togglePlay(); }
+    else if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
+    else if (ev.key === 'G') { E.glitchIt(); syncControls(); drawRoll(); syncEdit(); }
+    else if (PIANO_KEYS[ev.key] != null) { if (!ev.repeat) pressKey(kbBase + PIANO_KEYS[ev.key]); }
+    else if (ev.key === 'z' || ev.key === 'x') { kbBase = Math.max(12, Math.min(96, kbBase + (ev.key === 'x' ? 12 : -12))); renderPiano(); }
     else if (ev.key === 'n' || ev.key === 'N') { E.newProg(); refreshHarmony(); }
-    else if (ev.key === 'g' || ev.key === 'G') { E.glitchIt(); syncControls(); drawRoll(); }
-    else if (ev.key === 'r' || ev.key === 'R') { E.newGroove(); renderLayers(); drawRoll(); }
+    else if (ev.key === 'r' || ev.key === 'R') { E.newGroove(); renderLayers(); drawRoll(); syncEdit(); }
     else if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') {
       if (!S.chops.length) return;
       S.sel = Math.max(0, Math.min(S.chops.length - 1, S.sel + (ev.key === 'ArrowRight' ? 1 : -1)));
@@ -466,8 +645,9 @@
       throw err;
     } finally { $('busy').hidden = true; }
     peaks = null;
-    syncControls(); renderChops(); drawWave(); refreshHarmony();
-    status(`${name}: ${S.chops.length} chops (${S.chops.filter((c) => c.pitched).length} pitched) · key ${KEY_NAMES[S.key]} ${S.mode === 'maj' ? 'major' : 'minor'}`);
+    kbBase = null;
+    syncControls(); renderChops(); drawWave(); renderPiano(); refreshHarmony();
+    status(`${name}: ${S.chops.length} chops (${S.chops.filter((c) => c.pitched).length} pitched) · key ${keyText()} · progression ${S.sampleProg || '(none found)'}`);
     $('playBtn').textContent = 'PLAY';
     if (wasPlaying) togglePlay();
   }
@@ -523,8 +703,7 @@
   window.addEventListener('resize', () => { peaks = null; drawWave(); drawRoll(); });
 
   // ---------- boot ----------
-  E.setStyle(S.style);
-  S.progStr = '';
+  S.drawLayer = 'lead'; S.snap = 1;
   syncControls();
-  renderProg(); drawWave(); drawRoll();
+  renderProg(); drawWave(); drawRoll(); renderPiano();
 })(window.CC);

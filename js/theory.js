@@ -107,6 +107,72 @@ window.CC = window.CC || {};
     return best ? best.v : ints.map((i) => base + i);
   };
 
+  // ---------- progression detection ----------
+  // Splits the pitched part of the sample into ~1.6 s windows (2-8 of them), builds a pitch-class
+  // histogram per window (chop overlap x confidence) and harmonises it with the best-fitting
+  // diatonic chord: root / third / fifth reward, other notes penalise, a strong diatonic 7th adds
+  // a 7th. Repeated chords merge into one longer chord. Returns roman numerals ("vi IV:8 V").
+  const ROOT_NAME = { 0: 'I', 1: 'bII', 2: 'II', 3: 'bIII', 4: 'III', 5: 'IV', 6: 'bV', 7: 'V', 8: 'bVI', 9: 'VI', 10: 'bVII', 11: 'VII' };
+  CC.detectProg = function (chops, key, mode, sampleRate) {
+    const pcOf = (c) => ((Math.round(c.note != null ? c.note : c.midi) - key) % 12 + 12) % 12;
+    const pitched = chops.filter((c) => c.pitched || c.note != null);
+    if (!pitched.length) return '';
+    const a = Math.min(...pitched.map((c) => c.start)), b = Math.max(...pitched.map((c) => c.end));
+    const n = Math.max(1, Math.min(8, Math.round((b - a) / sampleRate / 1.6)));
+    const scale = mode === 'min' ? [0, 2, 3, 5, 7, 8, 10] : [0, 2, 4, 5, 7, 9, 11];
+    const all = new Array(12).fill(0);
+    const hists = [];
+    for (let k = 0; k < n; k++) {
+      const ws = a + ((b - a) * k) / n, we = a + ((b - a) * (k + 1)) / n, h = new Array(12).fill(0);
+      pitched.forEach((c) => {
+        const ov = Math.min(c.end, we) - Math.max(c.start, ws);
+        if (ov > 0) { h[pcOf(c)] += ov * (0.3 + c.conf); all[pcOf(c)] += ov * (0.3 + c.conf); }
+      });
+      hists.push(h);
+    }
+    // minor with a raised 7th in the melody -> harmonic-minor V
+    const raisedV = mode === 'min' && all[11] > all[10];
+    const chordFor = (d) => {
+      const r = scale[d], third = scale[(d + 2) % 7], fifth = scale[(d + 4) % 7], sev = scale[(d + 6) % 7];
+      const iv = (x) => (x - r + 12) % 12;
+      let i3 = iv(third);
+      if (raisedV && d === 4) i3 = 4;
+      const tones = [r, (r + i3) % 12, fifth];
+      return { d, r, i3, i5: iv(fifth), i7: iv(sev), tones, sev };
+    };
+    const chords = scale.map((_, d) => chordFor(d));
+    const tokens = [];
+    let prev = null;
+    hists.forEach((h, k) => {
+      const tot = h.reduce((x, y) => x + y, 0);
+      if (!tot) { tokens.push(prev || (mode === 'min' ? 'i' : 'I')); return; }
+      let best = null;
+      chords.forEach((c) => {
+        let s = h[c.tones[0]] * 1.0 + h[c.tones[1]] * 0.9 + h[c.tones[2]] * 0.7;
+        for (let p = 0; p < 12; p++) if (!c.tones.includes(p) && p !== c.sev) s -= h[p] * 0.35;
+        if (c.d === 0) s += tot * (k === 0 ? 0.15 : 0.05);
+        if (c.i5 === 6) s -= tot * 0.15; // diminished chords only when clearly implied
+        if (!best || s > best.s) best = { s, c };
+      });
+      const c = best.c;
+      const minor = c.i3 === 3, dim = c.i5 === 6;
+      let tok = ROOT_NAME[c.r];
+      if (minor || dim) tok = tok.toLowerCase();
+      const seventh = h[c.sev] > 0.5 * h[c.r] && h[c.sev] > 0.15 * tot;
+      if (dim) tok += seventh ? (c.i7 === 10 ? 'ø' : '°7') : '°';
+      else if (seventh) tok += c.i7 === 11 ? 'maj7' : '7';
+      tokens.push(tok);
+      prev = tok;
+    });
+    const out = [];
+    tokens.forEach((t) => {
+      const last = out[out.length - 1];
+      if (last && last.t === t) last.n++;
+      else out.push({ t, n: 1 });
+    });
+    return out.map((o) => (o.n > 1 ? `${o.t}:${o.n * 4}` : o.t)).join(' ');
+  };
+
   // ---------- styles ----------
   const T = (s) => s.replace(/\s+/g, '');
   const style = (o) => {
