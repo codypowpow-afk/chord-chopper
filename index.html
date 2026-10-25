@@ -98,7 +98,7 @@
       <button id="sampleProgBtn" class="btn" title="The progression detected in your sample's notes">FROM SAMPLE</button>
       <button id="newProgBtn" class="btn hot" title="N: random progression from the style">NEW PROGRESSION</button>
       <button id="grooveBtn" class="btn" title="R: re-roll the layer patterns and chop picks">NEW GROOVE</button>
-      <button id="glitchBtn" class="btn" title="G: random glitch settings">GLITCH IT</button>
+      <button id="glitchBtn" class="btn" title="Shift+G: random glitch for the layer(s) selected under EDITING">GLITCH IT</button>
       <div class="group">
         <div class="glabel">AUTO-CYCLE PROGRESSIONS</div>
         <div class="seg" data-key="cycle" data-num><button data-v="0">OFF</button><button data-v="1">EVERY LOOP</button><button data-v="2">2 LOOPS</button><button data-v="4">4 LOOPS</button></div>
@@ -132,43 +132,53 @@
       <div class="sec-head"><span class="num">4</span><span class="sec-title">LAYERS</span></div>
       <div id="layers"></div>
     </div>
-    <div class="col">
-      <div class="sec-head"><span class="num">5</span><span class="sec-title">GLITCH</span></div>
-      <div class="group slider"><div class="glabel">STUTTER <span data-out="stutter"></span></div><input type="range" data-key="stutter" min="0" max="1" step="0.01" data-regen></div>
-      <div class="group slider"><div class="glabel">REVERSE <span data-out="reverse"></span></div><input type="range" data-key="reverse" min="0" max="1" step="0.01" data-regen></div>
-      <div class="group slider"><div class="glabel">SCATTER <span data-out="scatter"></span></div><input type="range" data-key="scatter" min="0" max="1" step="0.01" data-regen></div>
-      <div class="group slider"><div class="glabel">GATE <span data-out="gate"></span></div><input type="range" data-key="gate" min="0" max="1" step="0.01" data-regen></div>
-      <div class="group slider"><div class="glabel">TAPE STOP <span data-out="tape"></span></div><input type="range" data-key="tape" min="0" max="1" step="0.01" data-regen></div>
-      <div class="row tight">
-        <div class="group">
-          <div class="glabel">CHOP PICK</div>
-          <div class="seg" data-key="pick"><button data-v="near" title="Chop closest in pitch (least stretch)">NEAREST</button><button data-v="random">RANDOM</button><button data-v="cycle">CYCLE</button><button data-v="one" title="Only the selected chop">ONE</button></div>
+    <div class="col wide">
+      <div class="target-bar">
+        <span class="sec-title">EDITING</span>
+        <div class="seg target" id="targetSeg"><button data-v="all">ALL LAYERS</button><button data-v="chords"><i style="background:var(--chords)"></i>CHORDS</button><button data-v="lead"><i style="background:var(--lead)"></i>LEAD</button><button data-v="bass"><i style="background:var(--bass)"></i>BASS</button><button data-v="perc"><i style="background:var(--perc)"></i>PERC</button></div>
+        <span class="hint">Glitch and FX changes go to this layer only, live, and leave every other layer's pattern alone.</span>
+      </div>
+      <div class="subcols">
+        <div class="col">
+          <div class="sec-head"><span class="num">5</span><span class="sec-title">GLITCH</span><span class="hint" id="glitchFor"></span></div>
+          <div class="group slider"><div class="glabel">STUTTER <span data-lout="stutter"></span></div><input type="range" data-group="g" data-lkey="stutter" min="0" max="1" step="0.01"></div>
+          <div class="group slider"><div class="glabel">REVERSE <span data-lout="reverse"></span></div><input type="range" data-group="g" data-lkey="reverse" min="0" max="1" step="0.01"></div>
+          <div class="group slider"><div class="glabel">SCATTER <span data-lout="scatter"></span></div><input type="range" data-group="g" data-lkey="scatter" min="0" max="1" step="0.01"></div>
+          <div class="group slider"><div class="glabel">GATE <span data-lout="gate"></span></div><input type="range" data-group="g" data-lkey="gate" min="0" max="1" step="0.01"></div>
+          <div class="group slider"><div class="glabel">TAPE STOP <span data-lout="tape"></span></div><input type="range" data-group="g" data-lkey="tape" min="0" max="1" step="0.01"></div>
+          <div class="row tight">
+            <div class="group">
+              <div class="glabel">CHOP PICK</div>
+              <div class="seg" data-group="g" data-lkey="pick"><button data-v="near" title="Chop closest in pitch (least stretch)">NEAREST</button><button data-v="random">RANDOM</button><button data-v="cycle">CYCLE</button><button data-v="one" title="Only the selected chop">ONE</button></div>
+            </div>
+            <div class="group">
+              <div class="glabel">SUSTAIN</div>
+              <div class="seg" data-group="g" data-lkey="hold" data-bool><button data-v="true" title="Loop a chop's body when the note is longer than the chop">HOLD</button></div>
+            </div>
+          </div>
+          <div class="row tight">
+            <div class="group">
+              <div class="glabel">CRUSH BITS</div>
+              <div class="seg" data-group="g" data-lkey="bits" data-num><button data-v="16">16</button><button data-v="12">12</button><button data-v="8">8</button><button data-v="6">6</button></div>
+            </div>
+            <div class="group">
+              <div class="glabel">CRUSH RATE</div>
+              <div class="seg" data-group="g" data-lkey="rate" data-num><button data-v="0">OFF</button><button data-v="22050">22k</button><button data-v="11025">11k</button><button data-v="6000">6k</button></div>
+            </div>
+          </div>
+          <div class="row tight"><button id="glitchLayerBtn" class="btn" title="Shift+G: random glitch for the layer(s) being edited">RANDOM GLITCH</button><button id="clearLayerBtn" class="btn" title="Glitch and FX back to 0 for the layer(s) being edited">CLEAR</button></div>
         </div>
-        <div class="group">
-          <div class="glabel">SUSTAIN</div>
-          <div class="seg"><button id="holdBtn" title="Loop a chop's body when the note is longer than the chop">HOLD</button></div>
+        <div class="col">
+          <div class="sec-head"><span class="num">6</span><span class="sec-title">FX</span><span class="hint" id="fxFor"></span></div>
+          <div class="group slider"><div class="glabel">FILTER <span data-lout="cutoff"></span></div><input type="range" data-group="fx" data-lkey="cutoff" min="0" max="1" step="0.005"></div>
+          <div class="group slider"><div class="glabel">RESONANCE <span data-lout="res"></span></div><input type="range" data-group="fx" data-lkey="res" min="0" max="1" step="0.01"></div>
+          <div class="group slider"><div class="glabel">DELAY 3/16 <span data-lout="delay"></span></div><input type="range" data-group="fx" data-lkey="delay" min="0" max="1" step="0.01"></div>
+          <div class="group slider"><div class="glabel">REVERB <span data-lout="verb"></span></div><input type="range" data-group="fx" data-lkey="verb" min="0" max="1" step="0.01"></div>
+          <div class="group slider"><div class="glabel">DRIVE <span data-lout="drive"></span></div><input type="range" data-group="fx" data-lkey="drive" min="0" max="1" step="0.01"></div>
+          <div class="group slider master"><div class="glabel">MASTER VOLUME <span data-out="volume"></span></div><input type="range" data-key="volume" min="0" max="1" step="0.01"></div>
+          <canvas id="scope" class="scope"></canvas>
         </div>
       </div>
-      <div class="row tight">
-        <div class="group">
-          <div class="glabel">CRUSH BITS</div>
-          <div class="seg" data-key="bits" data-num><button data-v="16">16</button><button data-v="12">12</button><button data-v="8">8</button><button data-v="6">6</button></div>
-        </div>
-        <div class="group">
-          <div class="glabel">CRUSH RATE</div>
-          <div class="seg" data-key="rate" data-num><button data-v="0">OFF</button><button data-v="22050">22k</button><button data-v="11025">11k</button><button data-v="6000">6k</button></div>
-        </div>
-      </div>
-    </div>
-    <div class="col">
-      <div class="sec-head"><span class="num">6</span><span class="sec-title">FX</span></div>
-      <div class="group slider"><div class="glabel">FILTER <span data-out="cutoff"></span></div><input type="range" data-key="cutoff" min="0" max="1" step="0.005"></div>
-      <div class="group slider"><div class="glabel">RESONANCE <span data-out="res"></span></div><input type="range" data-key="res" min="0" max="1" step="0.01"></div>
-      <div class="group slider"><div class="glabel">DELAY 3/16 <span data-out="delay"></span></div><input type="range" data-key="delay" min="0" max="1" step="0.01"></div>
-      <div class="group slider"><div class="glabel">REVERB <span data-out="verb"></span></div><input type="range" data-key="verb" min="0" max="1" step="0.01"></div>
-      <div class="group slider"><div class="glabel">DRIVE <span data-out="drive"></span></div><input type="range" data-key="drive" min="0" max="1" step="0.01"></div>
-      <div class="group slider"><div class="glabel">VOLUME <span data-out="volume"></span></div><input type="range" data-key="volume" min="0" max="1" step="0.01"></div>
-      <canvas id="scope" class="scope"></canvas>
     </div>
   </section>
   <footer class="status" id="status">Load a sample to begin.</footer>

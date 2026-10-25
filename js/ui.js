@@ -25,16 +25,12 @@
     $('swing').value = S.swing;
     $('roamBtn').classList.toggle('on', S.roam);
     $('evolveBtn').classList.toggle('on', S.evolve);
-    $('holdBtn').classList.toggle('on', S.hold);
     $('gridGroup').style.display = S.chopMode === 'grid' ? '' : 'none';
-    renderKeys(); renderStyles(); renderLayers();
+    renderKeys(); renderStyles(); renderLayers(); syncLayerControls();
   }
 
-  // Passive changes regenerate the loop unless it has manual edits.
-  function softRegen() {
-    if (S.frozen) { status('The remix has manual edits: press RESET EDITS to apply this change.'); return; }
-    E.generate(); drawRoll();
-  }
+  // Chop pool / note changes rebuild the layers that have no manual edits.
+  function softRegen() { E.generate(); drawRoll(); }
 
   let rechopTimer = null;
   function rechopSoon() {
@@ -51,8 +47,7 @@
     if (key === 'drawLayer' || key === 'snap') return;
     if (['chopMode', 'grid', 'sens', 'minLen'].includes(key)) { rechopSoon(); return; }
     if (key === 'mode') { E.newProg(); refreshHarmony(); return; }
-    if (key === 'bits' || key === 'rate') { E.init(); E.rebuildProcessed(); return; }
-    if (key === 'pick' || key === 'cycle') { if (key === 'pick') softRegen(); return; }
+    if (key === 'cycle') return;
     E.updateChain();
   }
 
@@ -73,7 +68,7 @@
       S[key] = parseFloat(el.value);
       const out = document.querySelector(`[data-out="${key}"]`);
       if (out) out.textContent = fmt(key, S[key]);
-      if (el.hasAttribute('data-regen')) softRegen(); else onKeyChange(key);
+      onKeyChange(key);
     });
   });
   $('bpm').addEventListener('change', () => {
@@ -84,7 +79,70 @@
   $('swing').addEventListener('input', () => { S.swing = parseFloat($('swing').value); });
   $('roamBtn').onclick = () => { S.roam = !S.roam; syncControls(); };
   $('evolveBtn').onclick = () => { S.evolve = !S.evolve; syncControls(); };
-  $('holdBtn').onclick = () => { S.hold = !S.hold; syncControls(); };
+
+  // ---------- per-layer glitch / fx ----------
+  const LNAME = { all: 'ALL LAYERS', chords: 'CHORDS', lead: 'LEAD', bass: 'BASS', perc: 'PERC' };
+  const parseSeg = (seg, v) => (seg.hasAttribute('data-num') ? parseFloat(v) : seg.hasAttribute('data-bool') ? v === 'true' : v);
+  // Panels show the targeted layer's values; with ALL selected, a setting that differs between
+  // layers shows the first layer's value marked MIX (moving it sets every layer).
+  function syncLayerControls() {
+    const ts = E.targets();
+    const vals = (g, k) => ts.map((l) => S.layers[l][g][k]);
+    const mixed = (arr) => arr.some((v) => v !== arr[0]);
+    document.querySelectorAll('input[type=range][data-lkey]').forEach((el) => {
+      const v = vals(el.dataset.group, el.dataset.lkey);
+      el.value = v[0];
+      const out = document.querySelector(`[data-lout="${el.dataset.lkey}"]`);
+      if (out) out.textContent = fmt(el.dataset.lkey, v[0]) + (mixed(v) ? ' MIX' : '');
+    });
+    document.querySelectorAll('.seg[data-lkey]').forEach((seg) => {
+      const v = vals(seg.dataset.group, seg.dataset.lkey), mix = mixed(v);
+      seg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', !mix && parseSeg(seg, b.dataset.v) === v[0]));
+    });
+    $('targetSeg').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === S.target));
+    $('glitchFor').textContent = $('fxFor').textContent = '→ ' + LNAME[S.target];
+    document.querySelectorAll('.layer').forEach((row) => row.classList.toggle('target', S.target !== 'all' && row.dataset.l === S.target));
+  }
+  function setTarget(t) {
+    S.target = t;
+    if (t !== 'all') S.drawLayer = t; // draw on the layer being edited
+    syncLayerControls(); syncSeg('drawLayer'); drawRoll();
+  }
+  $('targetSeg').onclick = (ev) => { const b = ev.target.closest('button'); if (b) setTarget(b.dataset.v); };
+  document.querySelectorAll('input[type=range][data-lkey]').forEach((el) => {
+    el.addEventListener('input', () => {
+      E.setLayerParam(el.dataset.group, el.dataset.lkey, parseFloat(el.value));
+      syncLayerControls(); markMods();
+      if (el.dataset.group === 'g') drawRoll();
+    });
+  });
+  document.querySelectorAll('.seg[data-lkey]').forEach((seg) => {
+    seg.addEventListener('click', (ev) => {
+      const b = ev.target.closest('button'); if (!b) return;
+      let v = parseSeg(seg, b.dataset.v);
+      // a single toggle button (HOLD) flips
+      if (seg.hasAttribute('data-bool')) v = !E.targets().every((l) => S.layers[l].g[seg.dataset.lkey]);
+      E.init();
+      E.setLayerParam(seg.dataset.group, seg.dataset.lkey, v);
+      syncLayerControls(); markMods(); drawRoll();
+    });
+  });
+  function glitchTargets() { E.glitchIt(); syncLayerControls(); markMods(); drawRoll(); status(`Random glitch on ${LNAME[S.target].toLowerCase()}.`); }
+  $('glitchLayerBtn').onclick = glitchTargets;
+  $('clearLayerBtn').onclick = () => {
+    E.targets().forEach((l) => { Object.assign(S.layers[l].g, CC.defG()); Object.assign(S.layers[l].fx, CC.defFx()); });
+    E.reglitch(E.targets()); E.updateChain();
+    syncLayerControls(); markMods(); drawRoll();
+  };
+  // Small GLITCH / FX tags on layer rows whose settings are off their defaults.
+  function markMods() {
+    const dg = CC.defG(), df = CC.defFx();
+    document.querySelectorAll('.layer').forEach((row) => {
+      const L = S.layers[row.dataset.l];
+      const g = Object.keys(dg).some((k) => L.g[k] !== dg[k]), f = Object.keys(df).some((k) => L.fx[k] !== df[k]);
+      row.querySelector('.mods').textContent = [g ? 'GLITCH' : '', f ? 'FX' : ''].filter(Boolean).join(' · ');
+    });
+  }
 
   // ---------- key / style / progression ----------
   function renderKeys() {
@@ -143,7 +201,7 @@
 
   $('newProgBtn').onclick = () => { E.newProg(); refreshHarmony(); };
   $('grooveBtn').onclick = () => { E.newGroove(); renderLayers(); drawRoll(); syncEdit(); };
-  $('glitchBtn').onclick = () => { E.glitchIt(); syncControls(); drawRoll(); syncEdit(); };
+  $('glitchBtn').onclick = glitchTargets;
   $('prevBtn').onclick = () => { if (E.histStep(-1)) { syncControls(); refreshHarmony(); } };
   $('nextBtn').onclick = () => { if (E.histStep(1)) { syncControls(); refreshHarmony(); } };
   $('detectBtn').onclick = () => {
@@ -174,31 +232,39 @@
       const L = S.layers[l];
       const row = document.createElement('div');
       row.className = 'layer';
+      row.dataset.l = l;
       const pats = st[l].map((_, i) => `<button data-p="${i}" class="${S.pat[l] === i ? 'on' : ''}">${i + 1}</button>`).join('');
       const octs = l === 'perc' ? '' : `<span class="mini">OCT</span><div class="seg oct">${[-1, 0, 1].map((o) => `<button data-o="${o}" class="${L.oct === o ? 'on' : ''}">${o > 0 ? '+' + o : o}</button>`).join('')}</div>`;
       const src = l === 'bass' ? `<div class="seg src"><button data-s="chop" class="${L.src === 'chop' ? 'on' : ''}">CHOP</button><button data-s="sub" class="${L.src === 'sub' ? 'on' : ''}">SUB</button></div>` : '';
-      row.innerHTML = `<div class="lname"><i style="background:var(--${l})"></i>${LAYER_LABEL[l]}</div>
+      row.innerHTML = `<div class="lname" title="Edit this layer's glitch / fx"><i style="background:var(--${l})"></i><span>${LAYER_LABEL[l]}<br><span class="mods"></span></span></div>
         <div class="ctl"><button class="btn small onoff ${L.on ? 'on' : ''}">${L.on ? 'ON' : 'OFF'}</button>
         <input type="range" min="0" max="1" step="0.01" value="${L.level}" title="Level">
         <span class="mini">PATTERN</span><div class="seg pats">${pats}</div>${octs}${src}</div>`;
+      row.querySelector('.lname').onclick = () => setTarget(S.target === l ? 'all' : l);
       row.querySelector('.onoff').onclick = () => { L.on = !L.on; E.updateChain(); renderLayers(); drawRoll(); };
       row.querySelector('input').oninput = (ev) => { L.level = parseFloat(ev.target.value); E.updateChain(); };
       row.querySelector('.pats').onclick = (ev) => {
         const b = ev.target.closest('button'); if (!b) return;
-        S.pat[l] = +b.dataset.p; renderLayers(); softRegen();
+        S.pat[l] = +b.dataset.p; rebuild(l);
       };
       const oct = row.querySelector('.oct');
       if (oct) oct.onclick = (ev) => {
         const b = ev.target.closest('button'); if (!b) return;
-        L.oct = +b.dataset.o; renderLayers(); softRegen();
+        L.oct = +b.dataset.o; rebuild(l);
       };
       const sr = row.querySelector('.src');
       if (sr) sr.onclick = (ev) => {
         const b = ev.target.closest('button'); if (!b) return;
-        L.src = b.dataset.s; renderLayers(); softRegen();
+        L.src = b.dataset.s; rebuild(l);
       };
       box.appendChild(row);
     });
+    syncLayerControls(); markMods();
+  }
+  // Pattern / octave / source changes rebuild only that layer's notes.
+  function rebuild(l) {
+    if (!E.rebuildLayer(l)) status(`${LAYER_LABEL[l]} has manual edits: RESET EDITS to apply pattern changes to it.`);
+    renderLayers(); drawRoll();
   }
 
   // ---------- chops ----------
@@ -387,10 +453,12 @@
   const LAYER_COL = { chords: '#3de0ff', lead: '#ff3d8b', bass: '#ffc94a', perc: '#a59bbd' };
   let rollCache = null, rollDirty = true, lastStep = null;
   function syncEdit() {
-    $('editBadge').hidden = !S.frozen;
-    $('resetEditsBtn').hidden = !S.frozen;
+    const ed = E.anyEdited();
+    $('editBadge').hidden = !ed;
+    $('editBadge').textContent = ed ? 'EDITED: ' + CC.LAYERS.filter((l) => S.loop.edited[l]).map((l) => LAYER_LABEL[l]).join(' · ') : '';
+    $('resetEditsBtn').hidden = !ed;
   }
-  $('resetEditsBtn').onclick = () => { E.regen(); rollDirty = true; drawRoll(); syncEdit(); status('Edits cleared, remix regenerated.'); };
+  $('resetEditsBtn').onclick = () => { E.resetEdits(); rollDirty = true; drawRoll(); syncEdit(); status('Edits cleared, layers rebuilt from their patterns.'); };
 
   // Shared by painting and hit-testing. The pitch range is fixed per loop so it doesn't jump while editing.
   function geom(loop, w, h, dpr) {
@@ -452,22 +520,27 @@
       o.fillRect(s * G.sx, G.top - 4 * dpr, Math.max(1, dpr * (s % 16 ? 0.5 : 1)), h);
     }
     o.fillStyle = 'rgba(255,255,255,0.04)'; o.fillRect(0, G.percTop, w, h - G.percTop);
-    ['bass', 'chords', 'lead'].forEach((l) => {
-      loop.events.filter((e) => e.layer === l && e.midi != null).forEach((e) => {
+    // Filled blocks are what plays (the layer's glitched output); outlines are the layer's notes,
+    // which are what you edit. With no glitch they coincide. Muted layers stay visible but dim;
+    // layers other than the one being edited fade a little.
+    const fade = (l) => (S.layers[l].on ? 1 : 0.22) * (S.target === 'all' || S.target === l ? 1 : 0.55);
+    ['bass', 'chords', 'lead', 'perc'].forEach((l) => {
+      (loop.out[l] || []).forEach((e) => {
         const r = noteRect(e, G, dpr);
-        o.globalAlpha = (0.45 + e.vel * 0.55) * (S.layers[l].on ? 1 : 0.22); // muted layers stay visible but dim
+        o.globalAlpha = (0.4 + e.vel * 0.55) * fade(l);
         o.fillStyle = LAYER_COL[l];
-        o.fillRect(r.x, r.y, r.w, r.h);
+        o.fillRect(r.x, r.y, r.w, e.midi == null ? r.h - 2 * dpr : r.h);
         if (e.rev) { o.fillStyle = 'rgba(12,16,20,0.55)'; for (let k = 0; k < r.w; k += 4 * dpr) o.fillRect(r.x + k, r.y, 2 * dpr, r.h); }
         if (e.tape) { o.fillStyle = 'rgba(255,255,255,0.6)'; o.fillRect(r.x, r.y + r.h - dpr, r.w, dpr); }
-        if (e === drag.e) { o.globalAlpha = 1; o.strokeStyle = '#fff'; o.lineWidth = dpr; o.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1); }
       });
-    });
-    loop.events.filter((e) => e.midi == null).forEach((e) => {
-      const r = noteRect(e, G, dpr);
-      o.globalAlpha = (0.4 + e.vel * 0.6) * (S.layers.perc.on ? 1 : 0.22);
-      o.fillStyle = LAYER_COL.perc;
-      o.fillRect(r.x, r.y, r.w, r.h - 2 * dpr);
+      if (l === 'perc') return;
+      o.lineWidth = dpr;
+      (loop.base[l] || []).forEach((e) => {
+        const r = noteRect(e, G, dpr);
+        o.globalAlpha = e === drag.e ? 1 : 0.7 * fade(l);
+        o.strokeStyle = e === drag.e ? '#fff' : LAYER_COL[l];
+        o.strokeRect(r.x + 0.5, r.y + 0.5, Math.max(1, r.w - 1), Math.max(1, r.h - 1));
+      });
     });
     o.globalAlpha = 1;
   }
@@ -478,18 +551,19 @@
     const r = roll.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
     return { x: (ev.clientX - r.left) * dpr, y: (ev.clientY - r.top) * dpr, dpr, G: geom(S.loop, roll.width, roll.height, dpr) };
   };
+  // Hits a layer's notes (not the glitched output). The layer being edited wins over the others.
   function hitTest(p) {
-    const ev = S.loop.events;
-    const order = p.y >= p.G.percTop ? ['perc'] : ['lead', 'chords', 'bass'];
+    let order = p.y >= p.G.percTop ? ['perc'] : ['lead', 'chords', 'bass'];
+    if (S.target !== 'all' && order.includes(S.target)) order = [S.target].concat(order.filter((l) => l !== S.target));
     for (const l of order) {
+      const ev = S.loop.base[l] || [];
       for (let i = ev.length - 1; i >= 0; i--) {
         const e = ev[i];
-        if (l === 'perc' ? e.midi != null : e.layer !== l || e.midi == null) continue;
         const r = noteRect(e, p.G, p.dpr);
         // pitched notes hit by row (same math as placing a note) so boundaries never disagree
         const inY = e.midi == null ? p.y >= r.y && p.y <= r.y + r.h : e.midi === Math.floor(p.G.M(p.y));
         if (p.x >= r.x && p.x <= r.x + r.w && inY) {
-          return { e, edge: e.midi != null && r.w > 10 * p.dpr && p.x > r.x + r.w - 7 * p.dpr };
+          return { e, l, edge: e.midi != null && r.w > 10 * p.dpr && p.x > r.x + r.w - 7 * p.dpr };
         }
       }
     }
@@ -497,9 +571,9 @@
   }
   const snapTo = (v, free) => (free || !S.snap ? Math.round(v * 4) / 4 : Math.round(v / S.snap) * S.snap);
   function removeEvent(e) {
-    const i = S.loop.events.indexOf(e);
-    if (i >= 0) S.loop.events.splice(i, 1);
-    E.rebucket(); rollDirty = true; drawRoll(lastStep); syncEdit();
+    const arr = S.loop.base[e.layer], i = arr.indexOf(e);
+    if (i >= 0) arr.splice(i, 1);
+    E.editedLayer(e.layer); rollDirty = true; drawRoll(lastStep); syncEdit();
   }
   roll.addEventListener('contextmenu', (ev) => {
     ev.preventDefault();
@@ -520,10 +594,11 @@
       const layer = perc ? 'perc' : S.drawLayer;
       e = E.newEvent(layer, step, Math.floor(p.G.M(p.y)), layer === 'chords' ? 4 : perc ? 1 : Math.max(unit, 1));
       if (!e) { status('No chops in the pool to draw with.'); return; }
-      S.loop.events.push(e);
+      S.loop.base[layer].push(e);
       mode = perc ? 'move' : 'resize';
     }
-    drag.e = e; drag.mode = mode; drag.x0 = p.x; drag.y0 = p.y;
+    if (!hit) E.editedLayer(e.layer);
+    drag.e = e; drag.mode = mode; drag.x0 = p.x; drag.y0 = p.y; drag.created = !hit;
     drag.step0 = e.step; drag.midi0 = e.midi; drag.dur0 = e.dur; drag.moved = false;
     roll.setPointerCapture(ev.pointerId);
     E.previewEvent(e);
@@ -549,12 +624,14 @@
       const min = ev.shiftKey || !S.snap ? 0.25 : S.snap;
       e.dur = Math.max(min, Math.min(total - e.step, snapTo(drag.dur0 + dx, ev.shiftKey)));
     }
+    if (drag.moved) E.editedLayer(e.layer); // re-glitch just this layer so it plays the edit right away
     rollDirty = true; drawRoll(lastStep);
   });
   const endDrag = () => {
     if (!drag.e) return;
+    const l = drag.e.layer, changed = drag.moved || drag.created;
     drag.e = null;
-    E.rebucket(); rollDirty = true; drawRoll(lastStep); syncEdit();
+    if (changed) E.editedLayer(l); rollDirty = true; drawRoll(lastStep); syncEdit();
   };
   roll.addEventListener('pointerup', endDrag);
   roll.addEventListener('pointercancel', endDrag);
@@ -619,7 +696,7 @@
     if (ev.target.matches && ev.target.matches('input[type=number], select')) return;
     if (ev.code === 'Space') { ev.preventDefault(); togglePlay(); }
     else if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
-    else if (ev.key === 'G') { E.glitchIt(); syncControls(); drawRoll(); syncEdit(); }
+    else if (ev.key === 'G') glitchTargets();
     else if (PIANO_KEYS[ev.key] != null) { if (!ev.repeat) pressKey(kbBase + PIANO_KEYS[ev.key]); }
     else if (ev.key === 'z' || ev.key === 'x') { kbBase = Math.max(12, Math.min(96, kbBase + (ev.key === 'x' ? 12 : -12))); renderPiano(); }
     else if (ev.key === 'n' || ev.key === 'N') { E.newProg(); refreshHarmony(); }

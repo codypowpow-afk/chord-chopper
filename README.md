@@ -45,18 +45,28 @@ the original.
    pattern variants. Bass can be chops or a sine sub.
    - **Edit the remix:** click empty space in the roll to add a note on the DRAW layer (drag to stretch it), drag
      a note to move it in time or pitch, drag its right edge to stretch it, and right-click or Alt-click to delete.
-     Snap is 1/8, 1/16, 1/32 or off (hold Shift to ignore it). Once edited, the loop is marked EDITED, and sliders
-     and patterns stop regenerating it until you press **RESET EDITS**. Explicit actions (new progression, new
-     groove, style, key) still start fresh.
-4. **Glitch.** Stutter (2–8× retriggers, sometimes rising), reverse, scatter (octave jumps, mid-chop starts,
-   random chop swaps, 32nd shoves), gate and end-of-loop tape stop. **EVOLVE** re-rolls the glitches every loop
-   while the notes stay put. Chop pick: nearest pitch / random / cycle / one chop. HOLD loops a chop's body to
-   sustain long notes. Crush to 12 / 8 / 6 bits and 22k / 11k / 6k.
-5. **FX:** low-pass filter + resonance, 3/16 ping-pong delay, reverb, drive, volume.
+     Snap is 1/8, 1/16, 1/32 or off (hold Shift to ignore it). You edit a layer's notes (outlines). The filled
+     blocks are what plays after that layer's glitch, so glitch and FX keep working on top of your edits.
+   - An edited layer is marked EDITED and keeps its notes when you change its pattern, until you press
+     **RESET EDITS**. Explicit actions (new progression, new groove, style, key) still start fresh.
+4. **Per-layer glitch + FX.** Pick a layer under **EDITING** (or click a layer's name). The GLITCH and FX panels
+   then show and change that layer only, live while it plays. Every other layer keeps its exact notes and sound.
+   **ALL LAYERS** sets all four at once; settings that differ between layers are marked MIX. Layer rows show
+   GLITCH / FX tags when they have settings, and **CLEAR** puts the selected layer back to 0.
+   - **Glitch:** stutter (2–8× retriggers, sometimes rising), reverse, scatter (octave jumps, mid-chop starts,
+     random chop swaps, 32nd shoves), gate and end-of-loop tape stop. Each note keeps its own random draws, so
+     raising a slider only adds glitches on top of the current pattern instead of reshuffling it.
+   - **Chop pick** (nearest pitch / random / cycle / one chop) reassigns chops without moving any notes.
+   - **HOLD** loops a chop's body to sustain long notes. Crush goes to 12 / 8 / 6 bits and 22k / 11k / 6k.
+   - **FX:** low-pass filter + resonance, drive, and sends into a shared 3/16 ping-pong delay and reverb. Master
+     volume is global.
+   - **EVOLVE** re-rolls every layer's glitches each loop while the notes stay put. **GLITCH IT** / Shift+G
+     randomises the selected layer(s).
+   - Previews, chord auditions and the one-shot keys always play the clean sample.
 
 **Export:** rendered WAV (1–8 loops), 3-track MIDI (chords / lead / bass), or a zip of every chop named by its note.
 
-Keys: `Space` play/stop · `N` new progression · `Shift+G` glitch it · `R` new groove · `←/→` select chop · `A`–`P` one-shot keys · `Z/X` key octave.
+Keys: `Space` play/stop · `N` new progression · `Shift+G` glitch the selected layer(s) · `R` new groove · `←/→` select chop · `A`–`P` one-shot keys · `Z/X` key octave.
 
 ## Build the exe
 
