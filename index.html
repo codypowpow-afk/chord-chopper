@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chord Chopper</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header class="titlebar">
+    <div class="brand"><span class="logo">CHORD<b>CHOPPER</b></span><span class="by">glitch chops → chord progressions</span></div>
+    <div class="transport">
+      <button id="playBtn" class="btn hot wide" title="Space">PLAY</button>
+      <label>BPM</label><input id="bpm" class="lcd" type="number" min="50" max="220" step="1">
+      <label>SWING</label><input id="swing" type="range" min="0" max="0.75" step="0.01">
+    </div>
+    <div class="top-buttons">
+      <button id="loadBtn" class="btn">LOAD SAMPLE</button>
+      <button id="demoBtn" class="btn">DEMO VOX</button>
+      <select id="loopsSel" title="Loops to render"><option value="1">1 loop</option><option value="2">2 loops</option><option value="4">4 loops</option><option value="8">8 loops</option></select>
+      <button id="wavBtn" class="btn" title="Render the remix to WAV">EXPORT WAV</button>
+      <button id="midiBtn" class="btn" title="Chords, lead and bass as a 3-track MIDI file">EXPORT MIDI</button>
+      <button id="chopsBtn" class="btn" title="Every chop as a WAV named by its note, in a zip">EXPORT CHOPS</button>
+      <input type="file" id="fileInput" accept="audio/*,.wav,.aif,.aiff,.mp3,.flac,.ogg,.m4a" hidden>
+    </div>
+  </header>
+
+  <!-- 1 SAMPLE -->
+  <section class="panel">
+    <div class="sec-head">
+      <span class="num">1</span><span class="sec-title">SAMPLE → NOTES</span>
+      <span id="sampleName" class="lcd-inline">no sample</span>
+      <span class="hint">Click: hear chop · Dbl-click: cut · Alt-click: merge with next</span>
+    </div>
+    <div class="wave-wrap" id="waveWrap">
+      <canvas id="wave"></canvas>
+      <div class="drop-hint" id="dropHint">Drop a music or vocal sample here, press LOAD SAMPLE, or try DEMO VOX<br><small>WAV / MP3 / FLAC / OGG / M4A</small></div>
+      <div class="busy" id="busy" hidden><span id="busyText">ANALYZING</span></div>
+    </div>
+    <div class="row">
+      <div class="group">
+        <div class="glabel">CHOP BY</div>
+        <div class="seg" data-key="chopMode"><button data-v="notes" title="Split where the pitch changes (best for vocals / melodies)">NOTES</button><button data-v="onsets" title="Split on transients">ONSETS</button><button data-v="grid" title="Equal slices">GRID</button></div>
+      </div>
+      <div class="group" id="gridGroup">
+        <div class="glabel">GRID</div>
+        <div class="seg" data-key="grid" data-num><button data-v="8">8</button><button data-v="16">16</button><button data-v="32">32</button><button data-v="64">64</button></div>
+      </div>
+      <div class="group slider"><div class="glabel">SENSITIVITY <span data-out="sens"></span></div><input type="range" data-key="sens" min="0" max="1" step="0.01"></div>
+      <div class="group slider"><div class="glabel">MIN LENGTH <span data-out="minLen"></span></div><input type="range" data-key="minLen" min="0.03" max="0.5" step="0.01"></div>
+      <div class="group">
+        <div class="glabel">POOL</div>
+        <div class="seg"><button id="allInBtn" title="Use every chop">ALL</button><button id="pitchedBtn" title="Only chops with a clear pitch">PITCHED</button></div>
+      </div>
+      <div class="group grow">
+        <div class="glabel">SELECTED CHOP</div>
+        <div class="chop-info">
+          <span id="chopInfo" class="lcd-inline">—</span>
+          <select id="noteSel" title="Override the detected note"></select>
+          <button id="poolBtn" class="btn small" title="Use this chop in the remix">IN POOL</button>
+        </div>
+      </div>
+    </div>
+    <div class="chops" id="chops"></div>
+  </section>
+
+  <!-- 2 HARMONY -->
+  <section class="panel">
+    <div class="sec-head">
+      <span class="num">2</span><span class="sec-title">KEY + PROGRESSION</span>
+      <span class="hint">Click a chord to hear it with your chops · N new progression · G glitch it · R new groove</span>
+    </div>
+    <div class="row">
+      <div class="group">
+        <div class="glabel">KEY <button id="detectBtn" class="link" title="Detect the key from the chops">DETECT</button></div>
+        <div class="seg keys" id="keySeg"></div>
+      </div>
+      <div class="group">
+        <div class="glabel">SCALE</div>
+        <div class="seg" data-key="mode"><button data-v="maj">MAJOR</button><button data-v="min">MINOR</button></div>
+      </div>
+    </div>
+    <div class="glabel">STYLE PRESET</div>
+    <div class="styles" id="styles"></div>
+    <div class="prog-row">
+      <button id="prevBtn" class="btn" title="Previous progression">◀</button>
+      <div class="prog" id="prog"></div>
+      <button id="nextBtn" class="btn" title="Forward in history">▶</button>
+    </div>
+    <div class="row">
+      <button id="newProgBtn" class="btn hot" title="N">NEW PROGRESSION</button>
+      <button id="grooveBtn" class="btn" title="R: re-roll the layer patterns and chop picks">NEW GROOVE</button>
+      <button id="glitchBtn" class="btn" title="G: random glitch settings">GLITCH IT</button>
+      <div class="group">
+        <div class="glabel">AUTO-CYCLE PROGRESSIONS</div>
+        <div class="seg" data-key="cycle" data-num><button data-v="0">OFF</button><button data-v="1">EVERY LOOP</button><button data-v="2">2 LOOPS</button><button data-v="4">4 LOOPS</button></div>
+      </div>
+      <div class="group">
+        <div class="glabel">&nbsp;</div>
+        <div class="seg"><button id="roamBtn" title="Auto-cycle also jumps to a random style">ROAM STYLES</button><button id="evolveBtn" title="Fresh glitches every loop">EVOLVE</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 ROLL -->
+  <section class="panel">
+    <div class="sec-head">
+      <span class="num">3</span><span class="sec-title">REMIX</span>
+      <span class="legend"><i class="lg chords"></i>CHORDS <i class="lg lead"></i>LEAD <i class="lg bass"></i>BASS <i class="lg perc"></i>PERC <i class="lg rev"></i>REVERSED</span>
+    </div>
+    <div class="roll-wrap"><canvas id="roll"></canvas></div>
+  </section>
+
+  <!-- 4 LAYERS / GLITCH / FX -->
+  <section class="panel split">
+    <div class="col">
+      <div class="sec-head"><span class="num">4</span><span class="sec-title">LAYERS</span></div>
+      <div id="layers"></div>
+    </div>
+    <div class="col">
+      <div class="sec-head"><span class="num">5</span><span class="sec-title">GLITCH</span></div>
+      <div class="group slider"><div class="glabel">STUTTER <span data-out="stutter"></span></div><input type="range" data-key="stutter" min="0" max="1" step="0.01" data-regen></div>
+      <div class="group slider"><div class="glabel">REVERSE <span data-out="reverse"></span></div><input type="range" data-key="reverse" min="0" max="1" step="0.01" data-regen></div>
+      <div class="group slider"><div class="glabel">SCATTER <span data-out="scatter"></span></div><input type="range" data-key="scatter" min="0" max="1" step="0.01" data-regen></div>
+      <div class="group slider"><div class="glabel">GATE <span data-out="gate"></span></div><input type="range" data-key="gate" min="0" max="1" step="0.01" data-regen></div>
+      <div class="group slider"><div class="glabel">TAPE STOP <span data-out="tape"></span></div><input type="range" data-key="tape" min="0" max="1" step="0.01" data-regen></div>
+      <div class="row tight">
+        <div class="group">
+          <div class="glabel">CHOP PICK</div>
+          <div class="seg" data-key="pick"><button data-v="near" title="Chop closest in pitch (least stretch)">NEAREST</button><button data-v="random">RANDOM</button><button data-v="cycle">CYCLE</button><button data-v="one" title="Only the selected chop">ONE</button></div>
+        </div>
+        <div class="group">
+          <div class="glabel">SUSTAIN</div>
+          <div class="seg"><button id="holdBtn" title="Loop a chop's body when the note is longer than the chop">HOLD</button></div>
+        </div>
+      </div>
+      <div class="row tight">
+        <div class="group">
+          <div class="glabel">CRUSH BITS</div>
+          <div class="seg" data-key="bits" data-num><button data-v="16">16</button><button data-v="12">12</button><button data-v="8">8</button><button data-v="6">6</button></div>
+        </div>
+        <div class="group">
+          <div class="glabel">CRUSH RATE</div>
+          <div class="seg" data-key="rate" data-num><button data-v="0">OFF</button><button data-v="22050">22k</button><button data-v="11025">11k</button><button data-v="6000">6k</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="sec-head"><span class="num">6</span><span class="sec-title">FX</span></div>
+      <div class="group slider"><div class="glabel">FILTER <span data-out="cutoff"></span></div><input type="range" data-key="cutoff" min="0" max="1" step="0.005"></div>
+      <div class="group slider"><div class="glabel">RESONANCE <span data-out="res"></span></div><input type="range" data-key="res" min="0" max="1" step="0.01"></div>
+      <div class="group slider"><div class="glabel">DELAY 3/16 <span data-out="delay"></span></div><input type="range" data-key="delay" min="0" max="1" step="0.01"></div>
+      <div class="group slider"><div class="glabel">REVERB <span data-out="verb"></span></div><input type="range" data-key="verb" min="0" max="1" step="0.01"></div>
+      <div class="group slider"><div class="glabel">DRIVE <span data-out="drive"></span></div><input type="range" data-key="drive" min="0" max="1" step="0.01"></div>
+      <div class="group slider"><div class="glabel">VOLUME <span data-out="volume"></span></div><input type="range" data-key="volume" min="0" max="1" step="0.01"></div>
+      <canvas id="scope" class="scope"></canvas>
+    </div>
+  </section>
+  <footer class="status" id="status">Load a sample to begin.</footer>
+</div>
+<script src="js/dsp.js"></script>
+<script src="js/theory.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>
