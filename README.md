@@ -5,9 +5,9 @@ chord progressions in any key. It starts from the progression it hears in your s
 one of 20 style presets and cycle through random progressions, or let it roam across styles on its own. Play
 the found notes on a one-shot keyboard and draw your own notes into the remix. Runs fully offline.
 
-Out of the box everything non-essential is off: no glitch, swing, delay, reverb, drive, crush, sustain looping or
-percussion. Chords and lead are voiced around the sample's own pitch, so chops play close to how they sound in
-the original.
+Effects start at 0 so chops still sound like the sample, and chords are voiced around the sample's own pitch. What
+is on by default is what lets it breathe: chops sustain instead of stopping short, chords fade in and out softly,
+and the chords get a little reverb. CLEAR, or the sliders and HOLD, change any of that per layer.
 
 ## Run it
 
@@ -39,10 +39,18 @@ the original.
    - **NEW PROGRESSION** picks a random one from the style. ◀ ▶ step through your history.
    - Picking a style sets tempo, swing, patterns and progressions. It never turns glitch effects on.
    - **AUTO-CYCLE** swaps the progression every 1 / 2 / 4 loops. **ROAM STYLES** also jumps to a random style.
-   - Click a chord to hear it voiced with your chops.
-3. **Remix.** Chops are repitched (sampler style) onto voice-led chords, an arp / lead line over the chord tones,
-   a bass line, and chop percussion built from the unpitched chops. Each layer has on/off, level, octave and
-   pattern variants. Bass can be chops or a sine sub.
+   - **Change one chord at a time:** click a chord to hear it and open its editor. **TRY ANOTHER** swaps in a chord
+     that fits between its neighbours, **FITS HERE** lists the best options, and ROOT, TYPE, BASS NOTE (slash chords)
+     and LENGTH set it exactly. ADD AFTER and REMOVE change the chord count. Every other chord keeps its exact
+     notes, chops and glitches. ◀ ▶ step back through your changes.
+   - **NEW PROGRESSIONS USE** PLAIN, 7THS or LUSH adds colour to plain triads in the next progression.
+3. **Remix.** Two layers: voice-led chords, and a bass line that can be chops, a clean sub, or both. Chops are
+   repitched (sampler style). Each layer has on/off, level, octave and pattern variants; pattern 1 is one long note
+   per chord and the others re-attack without leaving gaps.
+   - **Voicing:** CLOSE, OPEN (drop 2) or WIDE (drop 2 + 4). Voicings follow the smoothest top note and avoid tight
+     intervals down low.
+   - **Sustain:** with HOLD on, a note longer than its chop loops the chop's body, with the loop tuned to the pitch
+     and crossfaded so it doesn't click.
    - **Edit the remix:** click empty space in the roll to add a note on the DRAW layer (drag to stretch it), drag
      a note to move it in time or pitch, drag its right edge to stretch it, and right-click or Alt-click to delete.
      Snap is 1/8, 1/16, 1/32 or off (hold Shift to ignore it). You edit a layer's notes (outlines). The filled
@@ -51,20 +59,20 @@ the original.
      **RESET EDITS**. Explicit actions (new progression, new groove, style, key) still start fresh.
 4. **Per-layer glitch + FX.** Pick a layer under **EDITING** (or click a layer's name). The GLITCH and FX panels
    then show and change that layer only, live while it plays. Every other layer keeps its exact notes and sound.
-   **ALL LAYERS** sets all four at once; settings that differ between layers are marked MIX. Layer rows show
-   GLITCH / FX tags when they have settings, and **CLEAR** puts the selected layer back to 0.
+   **BOTH** sets both layers at once; settings that differ between layers are marked MIX. Layer rows show
+   GLITCH / FX tags when they're off their defaults, and **CLEAR** puts the selected layer back to its defaults.
    - **Glitch:** stutter (2–8× retriggers, sometimes rising), reverse, scatter (octave jumps, mid-chop starts,
      random chop swaps, 32nd shoves), gate and end-of-loop tape stop. Each note keeps its own random draws, so
      raising a slider only adds glitches on top of the current pattern instead of reshuffling it.
    - **Chop pick** (nearest pitch / random / cycle / one chop) reassigns chops without moving any notes.
-   - **HOLD** loops a chop's body to sustain long notes. Crush goes to 12 / 8 / 6 bits and 22k / 11k / 6k.
-   - **FX:** low-pass filter + resonance, drive, and sends into a shared 3/16 ping-pong delay and reverb. Master
+   - Crush goes to 12 / 8 / 6 bits and 22k / 11k / 6k.
+   - **FX:** attack and release, low-pass filter + resonance, drive, and sends into a shared 3/16 ping-pong delay and reverb. Master
      volume is global.
    - **EVOLVE** re-rolls every layer's glitches each loop while the notes stay put. **GLITCH IT** / Shift+G
      randomises the selected layer(s).
    - Previews, chord auditions and the one-shot keys always play the clean sample.
 
-**Export:** rendered WAV (1–8 loops), 3-track MIDI (chords / lead / bass), or a zip of every chop named by its note.
+**Export:** rendered WAV (1–8 loops), 2-track MIDI (chords / bass), or a zip of every chop named by its note.
 
 Keys: `Space` play/stop · `N` new progression · `Shift+G` glitch the selected layer(s) · `R` new groove · `←/→` select chop · `A`–`P` one-shot keys · `Z/X` key octave.
 
