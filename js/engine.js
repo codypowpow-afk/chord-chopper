@@ -5,16 +5,13 @@ window.CC = window.CC || {};
 (function (CC) {
   'use strict';
 
-  const LAYERS = ['chords', 'bass'];
-  let editGrp = 1e7; // note groups made by edits, above any a pattern produces
+  const LAYERS = ['chords', 'lead', 'bass', 'perc'];
   CC.LAYERS = LAYERS;
 
-  // Every layer has its own glitch (g) and fx settings. Effects default to off so chops sound like
-  // the sample; what's on by default is what makes it sustain instead of dot: HOLD, soft envelopes
-  // and a little reverb on the chords.
-  const defG = () => ({ stutter: 0, reverse: 0, scatter: 0, gate: 1, tape: 0, hold: true, pick: 'near', bits: 16, rate: 0 });
-  const defFx = (l) => ({ cutoff: 1, res: 0, delay: 0, verb: l === 'chords' ? 0.25 : 0, drive: 0,
-    attack: l === 'chords' ? 0.2 : 0.05, release: l === 'chords' ? 0.5 : 0.25 });
+  // Every layer has its own glitch (g) and fx settings. Non-essential processing defaults to off
+  // so chops sound like the original sample.
+  const defG = () => ({ stutter: 0, reverse: 0, scatter: 0, gate: 1, tape: 0, hold: false, pick: 'near', bits: 16, rate: 0 });
+  const defFx = () => ({ cutoff: 1, res: 0, delay: 0, verb: 0, drive: 0 });
   CC.defG = defG; CC.defFx = defFx;
 
   const S = (CC.S = {
@@ -24,13 +21,14 @@ window.CC = window.CC || {};
     chopMode: 'notes', sens: 0.5, grid: 16, minLen: 0.09,
     // harmony
     key: 9, mode: 'min', style: 'pop', progStr: '', sampleProg: '', register: 60, history: [], histPos: -1,
-    pat: { chords: 0, bass: 0 },
-    color: 'lush', voicing: 'open',
+    pat: { chords: 0, lead: 0, bass: 0, perc: 0 },
     cycle: 0, roam: false, evolve: false,
     // layers
     layers: {
-      chords: { on: true, level: 0.55, oct: 0, g: defG(), fx: defFx('chords') },
-      bass: { on: true, level: 0.6, oct: 0, src: 'both', g: defG(), fx: defFx('bass') },
+      chords: { on: true, level: 0.7, oct: 0, g: defG(), fx: defFx() },
+      lead: { on: true, level: 0.75, oct: 0, g: defG(), fx: defFx() },
+      bass: { on: true, level: 0.8, oct: 0, src: 'chop', g: defG(), fx: defFx() },
+      perc: { on: false, level: 0.5, oct: 0, g: defG(), fx: defFx() },
     },
     target: 'all', // which layer(s) the GLITCH / FX panels edit
     volume: 0.8, bpm: 104, swing: 0,
@@ -82,7 +80,7 @@ window.CC = window.CC || {};
     return k;
   };
 
-  // Voice chords around the sample's own pitch so chops are repitched as little as possible.
+  // Voice chords / lead around the sample's own pitch so chops are repitched as little as possible.
   function updateRegister() {
     const m = S.chops.filter((c) => c.pitched || c.note != null).map(E.chopMidi).sort((a, b) => a - b);
     S.register = m.length ? Math.max(48, Math.min(76, Math.round(m[m.length >> 1]))) : 60;
@@ -135,23 +133,21 @@ window.CC = window.CC || {};
   E.style = () => CC.styleById(S.style);
   E.pool = () => { const st = E.style(); return st[S.mode].length ? st[S.mode] : st[S.mode === 'maj' ? 'min' : 'maj']; };
 
-  function remember(str) {
-    S.history = S.history.slice(0, S.histPos + 1);
-    S.history.push({ style: S.style, mode: S.mode, prog: str });
-    if (S.history.length > 40) S.history.shift();
-    S.histPos = S.history.length - 1;
-  }
   E.setProg = function (str, record) {
     S.progStr = str;
-    if (record !== false) remember(str);
+    if (record !== false) {
+      S.history = S.history.slice(0, S.histPos + 1);
+      S.history.push({ style: S.style, mode: S.mode, prog: str });
+      if (S.history.length > 40) S.history.shift();
+      S.histPos = S.history.length - 1;
+    }
     E.regen();
   };
   E.newProg = function () {
     const pool = E.pool();
     let p = pool[Math.floor(Math.random() * pool.length)];
-    const colored = (x) => CC.colorizeProg(x, S.mode, S.color);
-    for (let i = 0; i < 6 && pool.length > 1 && colored(p) === S.progStr; i++) p = pool[Math.floor(Math.random() * pool.length)];
-    E.setProg(colored(p));
+    for (let i = 0; i < 6 && pool.length > 1 && p === S.progStr; i++) p = pool[Math.floor(Math.random() * pool.length)];
+    E.setProg(p);
   };
   E.histStep = function (dir) {
     const h = S.history[S.histPos + dir];
@@ -208,8 +204,12 @@ window.CC = window.CC || {};
   // ---------- generator ----------
   function pools() {
     const on = S.chops.map((c, i) => ({ c, i })).filter((o) => o.c.on);
-    const pitched = on.filter((o) => o.c.pitched || o.c.note != null);
-    return { pitched: pitched.length ? pitched : on };
+    let pitched = on.filter((o) => o.c.pitched || o.c.note != null);
+    if (!pitched.length) pitched = on;
+    let perc = on.filter((o) => !o.c.pitched && o.c.note == null);
+    if (perc.length < 2) perc = on;
+    perc = perc.slice().sort((a, b) => a.c.bright - b.c.bright);
+    return { pitched, perc };
   }
 
   // Pattern char -> semitone above the chord root for bass.
@@ -222,7 +222,6 @@ window.CC = window.CC || {};
     if (ch === 'o') return 12;
     return 0;
   }
-  const DETUNE = [-5, 4, -3, 6]; // cents per chord voice: a little width when chops sustain together
   const near = (pc, base) => { let d = (((pc - base) % 12) + 12) % 12; if (d > 6) d -= 12; return base + d; };
 
   // A loop holds the chord timeline, each layer's base notes (loop.base[l]: what the patterns and
@@ -232,100 +231,26 @@ window.CC = window.CC || {};
   // New timeline and fresh notes everywhere (drops manual edits).
   E.regen = function () { return E.generate(true); };
   // Without force only layers that have no manual edits are rebuilt (e.g. a chop left the pool).
-  function buildTimeline(str) {
-    const chords = CC.parseProg(str, S.key, S.mode, E.style().beats);
-    let pos = 0;
-    const timeline = chords.map((ch) => {
-      const len = Math.max(1, Math.round(ch.beats * 4));
-      const o = Object.assign({ start: pos, len }, ch);
-      pos += len;
-      return o;
-    });
-    const total = Math.max(16, Math.ceil(pos / 16) * 16);
-    if (timeline.length) timeline[timeline.length - 1].len += total - pos;
-    return { total, chords: timeline, base: {}, out: {}, events: [], buckets: [], edited: {} };
-  }
   E.generate = function (force) {
-    const loop = !force && S.loop ? S.loop : buildTimeline(S.progStr || E.pool()[0]);
+    let loop = !force && S.loop ? S.loop : null;
+    if (!loop) {
+      const chords = CC.parseProg(S.progStr || E.pool()[0], S.key, S.mode, E.style().beats);
+      let pos = 0;
+      const timeline = chords.map((ch) => {
+        const len = Math.max(1, Math.round(ch.beats * 4));
+        const o = Object.assign({ start: pos, len }, ch);
+        pos += len;
+        return o;
+      });
+      const total = Math.max(16, Math.ceil(pos / 16) * 16);
+      if (timeline.length) timeline[timeline.length - 1].len += total - pos;
+      loop = { total, chords: timeline, base: {}, out: {}, events: [], buckets: [], edited: {} };
+    }
     LAYERS.forEach((l) => { if (!loop.edited[l]) loop.base[l] = buildLayer(loop, l); });
     S.loop = loop;
     E.reglitch();
     return loop;
   };
-
-  // ---------- changing chords one at a time ----------
-  // list: [{tok, from}] with `from` the chord's old index (-1 for new). A chord whose token and
-  // length are unchanged keeps its exact notes, chops and glitches, shifted to its new position.
-  // Only changed chords get new notes, so every other chord sounds the same as before.
-  function editChords(list) {
-    const old = S.loop;
-    const str = list.map((x) => x.tok).join(' ');
-    const loop = buildTimeline(str);
-    loop.edited = old.edited;
-    LAYERS.forEach((l) => {
-      const fresh = buildLayer(loop, l), off = editGrp;
-      editGrp += 200000;
-      const notes = [];
-      loop.chords.forEach((c, k) => {
-        const o = list[k].from >= 0 ? old.chords[list[k].from] : null;
-        if (o && o.token === c.token && o.len === c.len) {
-          (old.base[l] || []).forEach((n) => {
-            if (n.step >= o.start && n.step < o.start + o.len) notes.push(Object.assign({}, n, { step: n.step - o.start + c.start }));
-          });
-        } else {
-          fresh.forEach((n) => {
-            if (n.step >= c.start && n.step < c.start + c.len) notes.push(Object.assign({}, n, { grp: n.grp + off }));
-          });
-        }
-      });
-      loop.base[l] = notes.sort((a, b) => a.step - b.step);
-    });
-    S.progStr = str;
-    remember(str);
-    S.loop = loop;
-    E.reglitch();
-  }
-  const chordList = () => S.loop.chords.map((c, i) => ({ tok: c.token, from: i }));
-  // Replace chord i's numeral / type / slash; its length stays.
-  E.setChord = function (i, parts) {
-    const list = chordList();
-    const beats = CC.splitToken(list[i].tok).beats;
-    list[i] = { tok: CC.joinToken(Object.assign({}, parts, { beats })), from: i };
-    editChords(list);
-  };
-  E.setChordBeats = function (i, beats) {
-    const list = chordList();
-    const p = CC.splitToken(list[i].tok);
-    p.beats = beats;
-    list[i] = { tok: CC.joinToken(p), from: i };
-    editChords(list);
-  };
-  E.addChordAfter = function (i) {
-    const list = chordList();
-    list.splice(i + 1, 0, { tok: list[i].tok, from: i });
-    editChords(list);
-  };
-  E.removeChord = function (i) {
-    const list = chordList();
-    if (list.length < 2) return false;
-    list.splice(i, 1);
-    editChords(list);
-    return true;
-  };
-  E.chordOptions = function (i) {
-    const n = S.loop.chords.length, c = S.loop.chords;
-    return CC.chordOptions(E.style(), S.mode, c[(i - 1 + n) % n].token, c[i].token, c[(i + 1) % n].token, S.color);
-  };
-  // TRY ANOTHER: a random pick weighted toward what fits between the neighbours.
-  E.rerollChord = function (i) {
-    const opts = E.chordOptions(i).slice(0, 8);
-    if (!opts.length) return;
-    let r = Math.random() * opts.reduce((a, o) => a + o.score + 0.5, 0), pick = opts[0];
-    for (const o of opts) { r -= o.score + 0.5; if (r <= 0) { pick = o; break; } }
-    const parts = CC.splitToken(pick.tok);
-    E.setChord(i, parts);
-  };
-
   // Rebuild one layer's notes (pattern / octave / bass source changed). False if it has manual edits.
   E.rebuildLayer = function (l) {
     if (!S.loop || S.loop.edited[l]) return false;
@@ -364,10 +289,9 @@ window.CC = window.CC || {};
     let grp = LAYERS.indexOf(l) * 100000;
     const ev = [];
     // Walks the pattern: fn(step, char, dur, chord) for each note start. Holds ('-') run until the
-    // next non-hold char; a hold that crosses a chord change re-attacks on the new chord. A pattern
-    // that starts on a hold plays from the top, so all holds means one long note per chord.
+    // next non-hold char; a hold that crosses a chord change re-attacks on the new chord.
     const walk = (fn) => {
-      let held = p[0] === '-' ? 'x' : null;
+      let held = null;
       for (let s = 0; s < total; s++) {
         const c = p[s % p.length];
         const chordStart = timeline[chordIdx[s]].start === s;
@@ -383,29 +307,50 @@ window.CC = window.CC || {};
       // voice-led stabs, one chop per voice
       const voicings = [];
       let prev = null;
-      timeline.forEach((c) => { prev = CC.voice(c, S.register - 5 + 12 * L.chords.oct, prev, S.voicing); voicings.push(prev); });
+      timeline.forEach((c) => { prev = CC.voice(c, S.register - 5 + 12 * L.chords.oct, prev); voicings.push(prev); });
       walk((s, c, d) => {
         const notes = voicings[chordIdx[s]], used = [], g = grp++;
         notes.forEach((m, k) => {
           const chop = pick(m, used);
           used.push(chop);
           ev.push({ layer: l, step: s, dur: d, midi: m, chop, vel: (c === 'X' ? 1 : 0.8) * (0.62 - notes.length * 0.04),
-            pan: notes.length > 1 ? (k / (notes.length - 1) - 0.5) * 0.7 : 0, grp: g, detune: DETUNE[k % DETUNE.length] });
+            pan: notes.length > 1 ? (k / (notes.length - 1) - 0.5) * 0.7 : 0, grp: g });
         });
       });
-    } else {
-      const bassBase = 40 + 12 * L.bass.oct; // B1 - A#2: low, but still heard on small speakers
+    } else if (l === 'lead') {
+      // arp / melody over the chord-tone ladder
+      const leadBase = S.register + 12 * L.lead.oct;
       walk((s, c, d, ch) => {
-        const m = c === 'x' ? near(ch.root + ch.bassOff, bassBase) : near(ch.root, bassBase) + bassInt(c, ch.ints);
-        ev.push({ layer: l, step: s, dur: d, midi: m, chop: pick(m), vel: 0.9, pan: 0, grp: grp++ });
+        const pcs = Array.from(new Set(ch.ints.map((i) => i % 12))).sort((a, b) => a - b);
+        const idx = c === 'r' ? rng.int(6) : parseInt(c, 10);
+        if (isNaN(idx)) return;
+        const m = near(ch.root, leadBase) + pcs[idx % pcs.length] + 12 * Math.floor(idx / pcs.length);
+        ev.push({ layer: l, step: s, dur: d, midi: m, chop: pick(m), vel: 0.8, pan: (rng() - 0.5) * 0.3, grp: grp++ });
       });
+    } else if (l === 'bass') {
+      const bassBase = 36 + 12 * L.bass.oct;
+      walk((s, c, d, ch) => {
+        const m = near(ch.root, bassBase) + bassInt(c, ch.ints);
+        ev.push({ layer: l, step: s, dur: d, midi: m, chop: pick(m), vel: 0.9, pan: 0, grp: grp++, synth: L.bass.src === 'sub' });
+      });
+    } else {
+      // perc: unpitched chops at their own pitch, sorted dark -> bright into k / s / h
+      const pc = P.perc;
+      for (let s = 0; s < total; s++) {
+        const c = p[s % p.length], lc = c.toLowerCase();
+        if (!'ksh'.includes(lc)) continue;
+        const third = Math.max(1, Math.floor(pc.length / 3));
+        const from = lc === 'k' ? 0 : lc === 's' ? Math.min(pc.length - 1, third) : Math.max(0, pc.length - third);
+        const o = pc[Math.min(pc.length - 1, from + rng.int(third))];
+        ev.push({ layer: l, step: s, dur: lc === 'h' ? 1 : 2, midi: null, chop: o.i, vel: c === lc ? 0.7 : 1, pan: lc === 'h' ? (rng() - 0.5) * 0.5 : 0, grp: grp++ });
+      }
     }
     return ev;
   }
 
   // New chop assignment for a layer's notes (PICK changed); positions and pitches stay.
   function repick(l) {
-    if (!S.loop) return;
+    if (!S.loop || l === 'perc') return;
     const P = pools();
     if (!P.pitched.length) return;
     const pick = chooser(l, layerRng(l, 99), P), used = {};
@@ -427,35 +372,35 @@ window.CC = window.CC || {};
 
   // Glitch pass for one layer. Decisions are per note group (a chord hit's voices move together).
   function glitchLayer(loop, l, P, gseed) {
-    const G = S.layers[l].g;
+    const G = S.layers[l].g, pitched = l !== 'perc';
     const seed = (gseed * 7919 + S.seed + LAYERS.indexOf(l) * 104729) >>> 0;
     const gate = 0.15 + 0.85 * G.gate;
     const out = [];
     (loop.base[l] || []).forEach((e0) => {
       const e = Object.assign({ rev: false, offs: 0, tape: false }, e0);
       const u = (k) => uni(seed, e.grp, k);
-      e.dur = Math.max(0.25, e.dur * gate);
+      if (pitched) e.dur = Math.max(0.25, e.dur * gate);
       e.rev = u(0) < G.reverse;
       if (u(1) < G.scatter) {
         const kind = Math.floor(u(2) * 4);
-        if (kind === 0) e.midi += u(3) < 0.5 ? 12 : -12;
+        if (kind === 0 && pitched) e.midi += u(3) < 0.5 ? 12 : -12;
         else if (kind === 1) e.offs = 0.15 + u(3) * 0.5;
-        else if (kind === 2) e.chop = choose(P.pitched, u(3)).i;
+        else if (kind === 2 && pitched) e.chop = choose(P.pitched, u(3)).i;
         else if (kind === 3) { e.step += 0.5; e.dur = Math.max(0.25, e.dur - 0.5); }
       }
-      if (u(4) < G.stutter) {
+      if (u(4) < G.stutter && !e.synth) {
         const n = choose([2, 3, 4, 4, 6, 8], u(5)), span = Math.min(e.dur, choose([1, 1, 2, 2, 4], u(6))), sub = span / n, asc = u(7) < 0.25;
         for (let k = 0; k < n; k++) {
           out.push(Object.assign({}, e, {
             step: e.step + k * sub,
             dur: k === n - 1 ? e.dur - k * sub : sub * 0.8,
-            midi: e.midi + (asc ? Math.round((k * 12) / n) : 0),
+            midi: e.midi == null ? null : e.midi + (asc ? Math.round((k * 12) / n) : 0),
             vel: e.vel * (0.6 + (0.4 * (k + 1)) / n),
           }));
         }
       } else out.push(e);
     });
-    if (uni(seed, -1, 9) < G.tape) {
+    if (pitched && uni(seed, -1, 9) < G.tape) {
       const from = loop.total - 4;
       out.forEach((e) => { if (e.step >= from) { e.tape = true; e.dur = Math.max(e.dur, loop.total - e.step); } });
     }
@@ -563,135 +508,85 @@ window.CC = window.CC || {};
   E.updateChain = function () { if (E.chain) E.applyChain(E.chain); };
 
   // ---------- voices ----------
-  // Seconds for an ATTACK / RELEASE slider value (2 ms .. 1.2 s, curved).
-  E.envTime = (v) => 0.002 + v * v * 1.2;
-
-  // A copy of the chop whose body loops seamlessly: the loop length is a whole number of pitch
-  // periods and its end crossfades into what comes before the loop start, so there's no click or
-  // buzz. Built on first use, per chop and crush setting.
-  function sustainBuf(bufs, rev, chop) {
-    const cache = bufs.sus || (bufs.sus = {});
-    const key = (rev ? 'r' : 'f') + chop.start + '_' + chop.end;
-    if (cache[key]) return cache[key];
-    const src = rev ? bufs.rev : bufs.fwd, sr = src.sampleRate;
-    const s0 = rev ? src.length - chop.end : chop.start, n = chop.end - chop.start;
-    const a = Math.round(n * 0.25);
-    let b = Math.round(n * 0.9);
-    if (chop.pitched) {
-      const period = sr / (440 * Math.pow(2, (chop.midi - 69) / 12));
-      const fit = a + Math.round(Math.max(1, Math.round((b - a) / period)) * period);
-      if (fit <= n) b = fit;
-    }
-    const xf = Math.min(Math.round((b - a) * 0.5), a);
-    const out = E.ctx.createBuffer(src.numberOfChannels, b, sr);
-    for (let c = 0; c < src.numberOfChannels; c++) {
-      const x = src.getChannelData(c), o = out.getChannelData(c);
-      for (let i = 0; i < b; i++) o[i] = x[s0 + i];
-      for (let i = 0; i < xf; i++) {
-        const w = ((i + 0.5) / xf) * Math.PI * 0.5;
-        o[b - xf + i] = x[s0 + b - xf + i] * Math.cos(w) + x[s0 + a - xf + i] * Math.sin(w);
-      }
-    }
-    return (cache[key] = { buf: out, a: a / sr, b: b / sr });
-  }
-
-  // Plays one event at time t. The chop is repitched by playback rate (sampler style). With the
-  // layer's HOLD on, a note longer than its chop sustains on a seamless loop of the chop's body.
-  // e.clean plays the unprocessed sample (previews, one-shots); e.sustain lets a clean note hold.
+  // Plays one event at time t. The chop is repitched by playback rate (sampler style); with the
+  // layer's HOLD on, a note longer than its chop loops the chop's body to fill the length.
+  // e.clean (previews, one-shots) plays the untouched sample.
   E.playEvent = function (ctx, dest, e, t, stepDur) {
     const chop = S.chops[e.chop];
     if (!chop || !S.src) return null;
     const dur = e.dur * stepDur;
-    const layer = S.layers[e.layer];
-    const bassSrc = e.layer === 'bass' ? layer.src : null;
-    if (bassSrc === 'sub') return playSub(ctx, dest, e, t, dur);
-    const G = !e.clean && layer ? layer.g : null;
+    if (e.synth) return playSub(ctx, dest, e, t, dur);
+    const G = !e.clean && S.layers[e.layer] ? S.layers[e.layer].g : null;
     const bufs = G ? E.buf(G.bits, G.rate) : E.buf(16, 0);
-    const fwdOrRev = e.rev ? bufs.rev : bufs.fwd, sr = fwdOrRev.sampleRate;
+    const buf = e.rev ? bufs.rev : bufs.fwd, sr = buf.sampleRate;
     const len = (chop.end - chop.start) / sr, offs = e.offs || 0;
     const rate = e.midi == null ? 1 : Math.min(8, Math.max(1 / 16, Math.pow(2, (e.midi - E.chopMidi(chop)) / 12)));
+    const off0 = e.rev ? (buf.length - chop.end) / sr : chop.start / sr;
+    const offset = off0 + offs * len;
     const avail = (len * (1 - offs)) / rate;
     const src = ctx.createBufferSource();
-    let play = Math.min(dur, avail), offset, looped = false;
-    if ((G ? G.hold : e.sustain) && dur > avail * 1.05 && len > 0.03) {
-      const sus = sustainBuf(bufs, e.rev, chop);
-      src.buffer = sus.buf;
-      src.loop = true; src.loopStart = sus.a; src.loopEnd = sus.b;
-      offset = Math.min(offs * len, sus.a);
-      play = dur; looped = true;
-    } else {
-      src.buffer = fwdOrRev;
-      offset = (e.rev ? (fwdOrRev.length - chop.end) / sr : chop.start / sr) + offs * len;
-    }
-    if (play < 0.004) return bassSrc === 'both' ? playSub(ctx, dest, e, t, dur) : null;
+    src.buffer = buf;
     src.playbackRate.setValueAtTime(rate, t);
-    if (src.detune && e.detune) src.detune.value = e.detune;
+    let play = Math.min(dur, avail);
+    if (G && G.hold && dur > avail * 1.05 && len > 0.03) {
+      src.loop = true;
+      src.loopStart = off0 + len * Math.max(offs, 0.3);
+      src.loopEnd = Math.max(src.loopStart + 0.01, off0 + len * 0.85);
+      play = dur;
+    }
+    if (play < 0.004) return null;
     if (e.tape) src.playbackRate.exponentialRampToValueAtTime(rate * 0.06, t + play);
-    // Envelope. Attack and release shrink with the note so stutters stay tight. The release rings
-    // past the note when there's audio left to ring; otherwise it fades inside the chop's end.
-    const F = layer ? layer.fx : null;
-    const atk = Math.min(F ? E.envTime(F.attack) : 0.002, play * 0.4);
-    const rel = Math.min(F ? E.envTime(F.release) : 0.06, Math.max(0.01, play));
-    const tail = looped || dur < avail ? rel : 0;
-    const v = bassSrc === 'both' ? e.vel * 0.5 : e.vel;
     const env = ctx.createGain(), choke = ctx.createGain(), pan = ctx.createStereoPanner();
+    const atk = e.layer === 'chords' ? 0.006 : 0.002, rel = Math.min(0.06, play * 0.3);
     env.gain.setValueAtTime(0, t);
-    env.gain.linearRampToValueAtTime(v, t + atk);
-    env.gain.setValueAtTime(v, Math.max(t + atk + 0.001, t + play - (tail ? 0 : Math.min(0.06, play * 0.3))));
-    env.gain.linearRampToValueAtTime(0, t + play + tail);
+    env.gain.linearRampToValueAtTime(e.vel, t + atk);
+    env.gain.setValueAtTime(e.vel, Math.max(t + atk + 0.001, t + play - rel));
+    env.gain.linearRampToValueAtTime(0, t + play);
     pan.pan.value = e.pan || 0;
     src.connect(env); env.connect(choke); choke.connect(pan); pan.connect(dest);
     src.start(t, offset);
-    src.stop(t + play + tail + 0.02);
-    const voice = { src, choke, start: t, holdEnd: t + play, rel, end: t + play + tail, chop: e.chop, layer: e.layer };
-    if (bassSrc === 'both') voice.extra = playSub(ctx, dest, e, t, dur);
-    return voice;
+    src.stop(t + play + 0.02);
+    return { src, choke, start: t, end: t + play, chop: e.chop, layer: e.layer };
   };
 
-  // Clean sub under the bass: sine + a little triangle, so it reads on small speakers too.
+  // Sine + a little triangle sub for BASS = SUB.
   function playSub(ctx, dest, e, t, dur) {
     const f = 440 * Math.pow(2, (e.midi - 69) / 12);
     const o1 = ctx.createOscillator(), o2 = ctx.createOscillator(), g = ctx.createGain(), choke = ctx.createGain(), mix = ctx.createGain();
     o1.type = 'sine'; o2.type = 'triangle';
     o1.frequency.value = f; o2.frequency.value = f;
     mix.gain.value = 0.18;
-    const F = S.layers.bass.fx, hold = Math.max(0.05, dur);
-    const atk = Math.min(Math.max(0.005, E.envTime(F.attack)), hold * 0.4), rel = Math.min(E.envTime(F.release), hold);
-    const v = e.vel * 0.65, end = t + hold + rel;
+    const v = e.vel * 0.9, end = t + Math.max(0.05, dur);
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(v, t + atk);
-    g.gain.setValueAtTime(v, t + hold);
+    g.gain.linearRampToValueAtTime(v, t + 0.005);
+    g.gain.setValueAtTime(v, Math.max(t + 0.006, end - 0.03));
     g.gain.linearRampToValueAtTime(0, end);
     o1.connect(g); o2.connect(mix); mix.connect(g); g.connect(choke); choke.connect(dest);
     o1.start(t); o2.start(t); o1.stop(end + 0.02); o2.stop(end + 0.02);
-    return { src: o1, src2: o2, choke, start: t, holdEnd: t + hold, rel, end, chop: -1, layer: e.layer };
+    return { src: o1, src2: o2, choke, start: t, end, chop: -1, layer: e.layer };
   }
 
-  E.choke = function (v, t, fade) {
+  E.choke = function (v, t) {
     if (!v || v.end <= t) return;
-    const f = fade || 0.006;
     try {
       v.choke.gain.setValueAtTime(1, t);
-      v.choke.gain.linearRampToValueAtTime(0, t + f);
-      v.src.stop(t + f + 0.002);
-      if (v.src2) v.src2.stop(t + f + 0.002);
+      v.choke.gain.linearRampToValueAtTime(0, t + 0.006);
+      v.src.stop(t + 0.008);
+      if (v.src2) v.src2.stop(t + 0.008);
     } catch (err) { /* already stopped */ }
-    if (v.extra) E.choke(v.extra, t, f);
   };
 
-  // Each layer plays one note or chord at a time: a new one crossfades out whatever of that layer
-  // is still holding from earlier steps. Notes already in their release just ring out.
+  // Lead and bass are mono and chords cut the previous chord: a new note in a layer chokes
+  // that layer's voices from earlier steps.
   E.scheduleStep = function (ctx, chain, bucket, t, stepDur, state) {
     const voices = [];
     if (!bucket || !bucket.length) return voices;
     const fresh = {};
     bucket.forEach((e) => {
       const tt = t + (e.step - Math.floor(e.step)) * stepDur;
-      if (!fresh[e.layer]) {
+      if (e.layer !== 'perc' && !fresh[e.layer]) {
         fresh[e.layer] = [];
-        (state.last[e.layer] || []).forEach((v) => {
-          if (v.holdEnd > tt + 0.005) E.choke(v, tt, Math.max(0.012, Math.min(v.rel, 0.35)));
-        });
+        (state.last[e.layer] || []).forEach((v) => E.choke(v, tt));
       }
       const v = E.playEvent(ctx, chain.bus[e.layer], e, tt, stepDur);
       if (v) { voices.push(v); if (fresh[e.layer]) fresh[e.layer].push(v); }
@@ -757,8 +652,8 @@ window.CC = window.CC || {};
     clearInterval(timer); timer = null;
     if (!E.ctx) return;
     const t = E.ctx.currentTime;
-    E.queue.forEach((q) => q.voices.forEach((v) => E.choke(v, t, 0.03)));
-    Object.values(live.last).forEach((vs) => vs.forEach((v) => E.choke(v, t, 0.03)));
+    E.queue.forEach((q) => q.voices.forEach((v) => E.choke(v, t)));
+    Object.values(live.last).forEach((vs) => vs.forEach((v) => E.choke(v, t)));
     E.queue = [];
   };
 
@@ -771,7 +666,7 @@ window.CC = window.CC || {};
     const t = E.ctx.currentTime + 0.005;
     stopPreview(t);
     const c = S.chops[i], dur = (c.end - c.start) / S.src.sampleRate;
-    const v = E.playEvent(E.ctx, E.chain.preview, { layer: 'shot', chop: i, midi: null, dur: dur / E.stepDur(), vel: 0.9, clean: true }, t, E.stepDur());
+    const v = E.playEvent(E.ctx, E.chain.preview, { layer: 'perc', chop: i, midi: null, dur: dur / E.stepDur(), vel: 0.9, clean: true }, t, E.stepDur());
     if (v) previewVoices.push(v);
   };
   // Audition a chord of the progression with the chops that would play it.
@@ -785,20 +680,20 @@ window.CC = window.CC || {};
     const evs = (loop.base.chords || []).filter((e) => e.step >= ch.start && e.step < ch.start + ch.len);
     const first = evs.length ? evs[0].grp : null;
     const notes = evs.filter((e) => e.grp === first);
-    const dur = Math.min(16, ch.len);
+    const dur = Math.min(8, ch.len);
     if (notes.length) {
       notes.forEach((e) => {
-        const v = E.playEvent(E.ctx, E.chain.preview, Object.assign({}, e, { dur, clean: true, sustain: true }), t, E.stepDur());
+        const v = E.playEvent(E.ctx, E.chain.preview, Object.assign({}, e, { dur, clean: true }), t, E.stepDur());
         if (v) previewVoices.push(v);
       });
     } else {
       // chord layer silent on this chord: voice it fresh with the nearest chops
       const P = pools();
       if (!P.pitched.length) return;
-      CC.voice(ch, S.register - 5, null, S.voicing).forEach((m) => {
+      CC.voice(ch, S.register - 5, null).forEach((m) => {
         let best = P.pitched[0];
         P.pitched.forEach((o) => { if (Math.abs(m - E.chopMidi(o.c)) < Math.abs(m - E.chopMidi(best.c))) best = o; });
-        const v = E.playEvent(E.ctx, E.chain.preview, { layer: 'chords', chop: best.i, midi: m, dur, vel: 0.45, pan: 0, clean: true, sustain: true }, t, E.stepDur());
+        const v = E.playEvent(E.ctx, E.chain.preview, { layer: 'chords', chop: best.i, midi: m, dur, vel: 0.45, pan: 0, clean: true }, t, E.stepDur());
         if (v) previewVoices.push(v);
       });
     }
@@ -824,9 +719,17 @@ window.CC = window.CC || {};
     pool.forEach((o) => { if (Math.abs(midi - E.chopMidi(o.c)) < Math.abs(midi - E.chopMidi(best.c))) best = o; });
     return best.i;
   };
+  let editGrp = 1e7;
   E.newEvent = function (layer, step, midi, dur) {
-    if (!pools().pitched.length) return null;
-    return { layer, step, dur, midi, chop: E.nearestChop(midi), vel: layer === 'chords' ? 0.5 : 0.8, pan: 0, grp: editGrp++ };
+    const P = pools();
+    if (!P.pitched.length) return null;
+    const perc = layer === 'perc';
+    return {
+      layer, step, dur, midi: perc ? null : midi,
+      chop: perc ? P.perc[Math.floor(Math.random() * P.perc.length)].i : E.nearestChop(midi),
+      vel: layer === 'chords' ? 0.5 : 0.8, pan: 0, grp: editGrp++,
+      synth: layer === 'bass' && S.layers.bass.src === 'sub',
+    };
   };
   E.previewEvent = function (e) {
     E.init(); E.resume();
@@ -853,7 +756,7 @@ window.CC = window.CC || {};
     if (exact.length) chop = exact[shotRR++ % exact.length].i;
     else { chop = E.nearestChop(midi); m = midi; }
     if (chop < 0) return -1;
-    keyVoices[midi] = E.playEvent(E.ctx, E.chain.keys, { layer: 'shot', chop, midi: m, dur: 1e4, vel: 0.9, clean: true }, t, E.stepDur());
+    keyVoices[midi] = E.playEvent(E.ctx, E.chain.keys, { layer: 'perc', chop, midi: m, dur: 1e4, vel: 0.9, clean: true }, t, E.stepDur());
     return chop;
   };
 
@@ -881,12 +784,12 @@ window.CC = window.CC || {};
     return off.startRendering();
   };
 
-  // MIDI of the current loop: chord and bass tracks at the target pitches.
+  // MIDI of the current loop: chord / lead / bass tracks at the target pitches.
   E.midi = function () {
     const loop = S.loop;
-    const tracks = [['Chords', 'chords', 0], ['Bass', 'bass', 1]].map(([name, l, ch]) => ({
+    const tracks = [['Chords', 'chords', 0], ['Lead', 'lead', 1], ['Bass', 'bass', 2]].map(([name, l, ch]) => ({
       name, channel: ch,
-      events: loop.events.filter((e) => e.layer === l).map((e) => ({ step: e.step, len: Math.max(0.25, e.dur), note: e.midi, vel: e.vel })),
+      events: loop.events.filter((e) => e.layer === l && e.midi != null).map((e) => ({ step: e.step, len: Math.max(0.25, e.dur), note: e.midi, vel: e.vel })),
     }));
     return CC.encodeMidi(tracks, S.bpm, loop.total);
   };

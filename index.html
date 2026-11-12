@@ -20,7 +20,7 @@
       <button id="demoBtn" class="btn">DEMO VOX</button>
       <select id="loopsSel" title="Loops to render"><option value="1">1 loop</option><option value="2">2 loops</option><option value="4">4 loops</option><option value="8">8 loops</option></select>
       <button id="wavBtn" class="btn" title="Render the remix to WAV">EXPORT WAV</button>
-      <button id="midiBtn" class="btn" title="Chords and bass as a 2-track MIDI file">EXPORT MIDI</button>
+      <button id="midiBtn" class="btn" title="Chords, lead and bass as a 3-track MIDI file">EXPORT MIDI</button>
       <button id="chopsBtn" class="btn" title="Every chop as a WAV named by its note, in a zip">EXPORT CHOPS</button>
       <input type="file" id="fileInput" accept="audio/*,.wav,.aif,.aiff,.mp3,.flac,.ogg,.m4a" hidden>
     </div>
@@ -75,7 +75,7 @@
   <section class="panel">
     <div class="sec-head">
       <span class="num">2</span><span class="sec-title">KEY + PROGRESSION</span>
-      <span class="hint">Click a chord to hear it and change just that chord · N new progression · Shift+G glitch it · R new groove</span>
+      <span class="hint">Click a chord to hear it with your chops · N new progression · Shift+G glitch it · R new groove</span>
     </div>
     <div class="row">
       <div class="group">
@@ -94,20 +94,11 @@
       <div class="prog" id="prog"></div>
       <button id="nextBtn" class="btn" title="Forward in history">▶</button>
     </div>
-    <div class="chord-edit" id="chordEdit"></div>
     <div class="row">
       <button id="sampleProgBtn" class="btn" title="The progression detected in your sample's notes">FROM SAMPLE</button>
       <button id="newProgBtn" class="btn hot" title="N: random progression from the style">NEW PROGRESSION</button>
       <button id="grooveBtn" class="btn" title="R: re-roll the layer patterns and chop picks">NEW GROOVE</button>
       <button id="glitchBtn" class="btn" title="Shift+G: random glitch for the layer(s) selected under EDITING">GLITCH IT</button>
-      <div class="group">
-        <div class="glabel">NEW PROGRESSIONS USE</div>
-        <div class="seg" data-key="color"><button data-v="plain" title="Plain triads as the style writes them">PLAIN</button><button data-v="sevenths">7THS</button><button data-v="lush" title="9ths and add9s on plain triads">LUSH</button></div>
-      </div>
-      <div class="group">
-        <div class="glabel">VOICING</div>
-        <div class="seg" data-key="voicing"><button data-v="close" title="Notes stacked tightly">CLOSE</button><button data-v="open" title="Drop 2: one voice an octave lower">OPEN</button><button data-v="wide" title="Drop 2 + 4: the most spacious">WIDE</button></div>
-      </div>
       <div class="group">
         <div class="glabel">AUTO-CYCLE PROGRESSIONS</div>
         <div class="seg" data-key="cycle" data-num><button data-v="0">OFF</button><button data-v="1">EVERY LOOP</button><button data-v="2">2 LOOPS</button><button data-v="4">4 LOOPS</button></div>
@@ -124,12 +115,12 @@
     <div class="sec-head">
       <span class="num">3</span><span class="sec-title">REMIX</span>
       <div class="group inline"><span class="glabel">DRAW</span>
-        <div class="seg" data-key="drawLayer"><button data-v="chords">CHORDS</button><button data-v="bass">BASS</button></div></div>
+        <div class="seg" data-key="drawLayer"><button data-v="chords">CHORDS</button><button data-v="lead">LEAD</button><button data-v="bass">BASS</button><button data-v="perc">PERC</button></div></div>
       <div class="group inline"><span class="glabel">SNAP</span>
         <div class="seg" data-key="snap" data-num><button data-v="2">1/8</button><button data-v="1">1/16</button><button data-v="0.5">1/32</button><button data-v="0">OFF</button></div></div>
       <span id="editBadge" class="badge" hidden>EDITED</span>
       <button id="resetEditsBtn" class="btn small" hidden title="Throw away manual edits and regenerate">RESET EDITS</button>
-      <span class="legend"><i class="lg chords"></i>CHORDS <i class="lg bass"></i>BASS <i class="lg rev"></i>REVERSED</span>
+      <span class="legend"><i class="lg chords"></i>CHORDS <i class="lg lead"></i>LEAD <i class="lg bass"></i>BASS <i class="lg perc"></i>PERC <i class="lg rev"></i>REVERSED</span>
     </div>
     <div class="roll-wrap"><canvas id="roll"></canvas></div>
     <div class="hint roll-hint">Click empty space to add a note (drag to stretch it) · drag a note to move it · drag its right edge to stretch · right-click or Alt-click to delete · hold Shift to ignore snap</div>
@@ -144,8 +135,8 @@
     <div class="col wide">
       <div class="target-bar">
         <span class="sec-title">EDITING</span>
-        <div class="seg target" id="targetSeg"><button data-v="all">BOTH</button><button data-v="chords"><i style="background:var(--chords)"></i>CHORDS</button><button data-v="bass"><i style="background:var(--bass)"></i>BASS</button></div>
-        <span class="hint">Glitch and FX changes go to this layer only, live, and leave the other layer's pattern alone.</span>
+        <div class="seg target" id="targetSeg"><button data-v="all">ALL LAYERS</button><button data-v="chords"><i style="background:var(--chords)"></i>CHORDS</button><button data-v="lead"><i style="background:var(--lead)"></i>LEAD</button><button data-v="bass"><i style="background:var(--bass)"></i>BASS</button><button data-v="perc"><i style="background:var(--perc)"></i>PERC</button></div>
+        <span class="hint">Glitch and FX changes go to this layer only, live, and leave every other layer's pattern alone.</span>
       </div>
       <div class="subcols">
         <div class="col">
@@ -175,12 +166,10 @@
               <div class="seg" data-group="g" data-lkey="rate" data-num><button data-v="0">OFF</button><button data-v="22050">22k</button><button data-v="11025">11k</button><button data-v="6000">6k</button></div>
             </div>
           </div>
-          <div class="row tight"><button id="glitchLayerBtn" class="btn" title="Shift+G: random glitch for the layer(s) being edited">RANDOM GLITCH</button><button id="clearLayerBtn" class="btn" title="Glitch and FX back to their defaults for the layer(s) being edited">CLEAR</button></div>
+          <div class="row tight"><button id="glitchLayerBtn" class="btn" title="Shift+G: random glitch for the layer(s) being edited">RANDOM GLITCH</button><button id="clearLayerBtn" class="btn" title="Glitch and FX back to 0 for the layer(s) being edited">CLEAR</button></div>
         </div>
         <div class="col">
           <div class="sec-head"><span class="num">6</span><span class="sec-title">FX</span><span class="hint" id="fxFor"></span></div>
-          <div class="group slider"><div class="glabel">ATTACK <span data-lout="attack"></span></div><input type="range" data-group="fx" data-lkey="attack" min="0" max="1" step="0.01"></div>
-          <div class="group slider"><div class="glabel">RELEASE <span data-lout="release"></span></div><input type="range" data-group="fx" data-lkey="release" min="0" max="1" step="0.01"></div>
           <div class="group slider"><div class="glabel">FILTER <span data-lout="cutoff"></span></div><input type="range" data-group="fx" data-lkey="cutoff" min="0" max="1" step="0.005"></div>
           <div class="group slider"><div class="glabel">RESONANCE <span data-lout="res"></span></div><input type="range" data-group="fx" data-lkey="res" min="0" max="1" step="0.01"></div>
           <div class="group slider"><div class="glabel">DELAY 3/16 <span data-lout="delay"></span></div><input type="range" data-group="fx" data-lkey="delay" min="0" max="1" step="0.01"></div>

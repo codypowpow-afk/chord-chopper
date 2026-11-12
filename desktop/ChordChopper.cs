@@ -13,8 +13,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("Chord Chopper")]
 [assembly: AssemblyProduct("Chord Chopper")]
 [assembly: AssemblyDescription("Glitch sample chopper that remixes notes onto chord progressions")]
-[assembly: AssemblyVersion("1.3.0.0")]
-[assembly: AssemblyFileVersion("1.3.0.0")]
+[assembly: AssemblyVersion("1.2.0.0")]
+[assembly: AssemblyFileVersion("1.2.0.0")]
 
 namespace ChordChopper
 {

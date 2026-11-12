@@ -15,6 +15,7 @@
   --lcd: #7dffb0;
   --lcd-bg: #0d1a14;
   --chords: #3de0ff;
+  --lead: #ff3d8b;
   --bass: #ffc94a;
   --perc: #a59bbd;
 }
@@ -105,20 +106,13 @@ input[type=range] { accent-color: var(--hot); }
 .chip:hover { border-color: var(--cyan); }
 .chip .nm { font: 800 16px Consolas, monospace; color: var(--lcd); display: block; white-space: nowrap; }
 .chip .rm { font-size: 10px; color: var(--ink-soft); display: block; margin-top: 2px; }
-.chip.sel { border-color: var(--lcd); box-shadow: inset 0 0 0 1px var(--lcd); }
-.chord-edit { margin-top: 8px; padding: 8px 10px; background: var(--panel-2); border: 1px solid var(--edge); border-radius: 4px; }
-.ce-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
-.ce-title { font: 800 15px Consolas, monospace; color: var(--lcd); }
-.ce-row { display: flex; align-items: center; gap: 8px; margin-top: 5px; flex-wrap: wrap; }
-.ce-row .glabel { width: 66px; flex: none; }
-.ce-row .seg button { padding: 4px 7px; font-size: 10px; text-transform: none; }
-.ce-sugg button { padding: 4px 8px; font-size: 11px; }
 .chip.now { background: var(--hot); border-color: var(--hot); }
 .chip.now .nm, .chip.now .rm { color: #fff; }
 
 .legend { margin-left: auto; color: var(--ink-soft); font-size: 10px; font-weight: 700; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .lg { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-left: 6px; }
-.lg.chords { background: var(--chords); } .lg.bass { background: var(--bass); } .lg.rev { background: repeating-linear-gradient(45deg, #fff 0 2px, transparent 2px 4px); border: 1px solid #fff; }
+.lg.chords { background: var(--chords); } .lg.lead { background: var(--lead); } .lg.bass { background: var(--bass); } .lg.perc { background: var(--perc); }
+.lg.rev { background: repeating-linear-gradient(45deg, #fff 0 2px, transparent 2px 4px); border: 1px solid #fff; }
 .roll-wrap { height: 320px; background: var(--screen); border: 2px solid #000; border-radius: 4px; overflow: hidden; }
 #roll { width: 100%; height: 100%; display: block; }
 

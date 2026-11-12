@@ -4,7 +4,6 @@
   'use strict';
   const S = CC.S, E = CC.engine;
   const $ = (id) => document.getElementById(id);
-  let lastChip = -1; // chip lit by the playhead
   const KEY_NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
   const pcColor = (pc, a) => `hsla(${(((pc % 12) + 12) % 12) * 30 + 200}, 85%, 62%, ${a == null ? 1 : a})`;
   const status = (msg) => { $('status').textContent = msg; };
@@ -14,7 +13,6 @@
   function fmt(key, v) {
     if (key === 'minLen') return Math.round(v * 1000) + 'ms';
     if (key === 'cutoff') return v >= 0.999 ? 'OPEN' : Math.round(40 * Math.pow(2, v * 9)) + 'Hz';
-    if (key === 'attack' || key === 'release') return Math.round(E.envTime(v) * 1000) + 'ms';
     return Math.round(v * 100) + '%';
   }
   function syncControls() {
@@ -46,12 +44,7 @@
   }
 
   function onKeyChange(key) {
-    if (key === 'drawLayer' || key === 'snap' || key === 'color') return;
-    if (key === 'voicing') {
-      if (!E.rebuildLayer('chords')) status('CHORDS has manual edits: RESET EDITS to apply the voicing to it.');
-      drawRoll();
-      return;
-    }
+    if (key === 'drawLayer' || key === 'snap') return;
     if (['chopMode', 'grid', 'sens', 'minLen'].includes(key)) { rechopSoon(); return; }
     if (key === 'mode') { E.newProg(); refreshHarmony(); return; }
     if (key === 'cycle') return;
@@ -88,7 +81,7 @@
   $('evolveBtn').onclick = () => { S.evolve = !S.evolve; syncControls(); };
 
   // ---------- per-layer glitch / fx ----------
-  const LNAME = { all: 'BOTH', chords: 'CHORDS', bass: 'BASS' };
+  const LNAME = { all: 'ALL LAYERS', chords: 'CHORDS', lead: 'LEAD', bass: 'BASS', perc: 'PERC' };
   const parseSeg = (seg, v) => (seg.hasAttribute('data-num') ? parseFloat(v) : seg.hasAttribute('data-bool') ? v === 'true' : v);
   // Panels show the targeted layer's values; with ALL selected, a setting that differs between
   // layers shows the first layer's value marked MIX (moving it sets every layer).
@@ -137,15 +130,15 @@
   function glitchTargets() { E.glitchIt(); syncLayerControls(); markMods(); drawRoll(); status(`Random glitch on ${LNAME[S.target].toLowerCase()}.`); }
   $('glitchLayerBtn').onclick = glitchTargets;
   $('clearLayerBtn').onclick = () => {
-    E.targets().forEach((l) => { Object.assign(S.layers[l].g, CC.defG()); Object.assign(S.layers[l].fx, CC.defFx(l)); });
+    E.targets().forEach((l) => { Object.assign(S.layers[l].g, CC.defG()); Object.assign(S.layers[l].fx, CC.defFx()); });
     E.reglitch(E.targets()); E.updateChain();
     syncLayerControls(); markMods(); drawRoll();
   };
   // Small GLITCH / FX tags on layer rows whose settings are off their defaults.
   function markMods() {
-    const dg = CC.defG();
+    const dg = CC.defG(), df = CC.defFx();
     document.querySelectorAll('.layer').forEach((row) => {
-      const L = S.layers[row.dataset.l], df = CC.defFx(row.dataset.l);
+      const L = S.layers[row.dataset.l];
       const g = Object.keys(dg).some((k) => L.g[k] !== dg[k]), f = Object.keys(df).some((k) => L.fx[k] !== df[k]);
       row.querySelector('.mods').textContent = [g ? 'GLITCH' : '', f ? 'FX' : ''].filter(Boolean).join(' · ');
     });
@@ -186,71 +179,20 @@
   function renderProg() {
     const box = $('prog');
     box.innerHTML = '';
-    const chords = S.loop.chords;
-    S.selChord = Math.max(0, Math.min(chords.length - 1, S.selChord || 0));
-    lastChip = -1;
+    const chords = S.loop ? S.loop.chords : CC.parseProg(S.progStr || E.pool()[0], S.key, S.mode, E.style().beats);
     chords.forEach((c, k) => {
       const d = document.createElement('div');
-      d.className = 'chip' + (k === S.selChord ? ' sel' : '');
-      d.style.flexGrow = c.len / 16;
+      d.className = 'chip';
+      d.style.flexGrow = c.len ? c.len / 16 : c.beats / 4;
       d.innerHTML = `<span class="nm">${c.name}</span><span class="rm">${c.roman}</span>`;
-      d.title = 'Hear this chord and change it below';
-      d.onclick = () => { S.selChord = k; renderProg(); if (!S.playing) E.previewChord(k); };
+      d.title = 'Hear this chord with your chops';
+      d.onclick = () => E.previewChord(k);
       box.appendChild(d);
     });
     $('sampleProgBtn').classList.toggle('on', !!S.sampleProg && S.progStr === S.sampleProg);
     $('prevBtn').disabled = S.histPos <= 0;
     $('nextBtn').disabled = S.histPos >= S.history.length - 1;
-    renderChordEdit();
   }
-
-  // ---------- change one chord ----------
-  const BASS_NOTES = [[0, 'ROOT'], [3, '3RD'], [5, '5TH'], [7, '7TH']];
-  const LENGTHS = [[2, '2 BEATS'], [4, '1 BAR'], [8, '2 BARS'], [16, '4 BARS']];
-  function afterChordEdit(msg) {
-    renderProg(); drawRoll(); syncEdit();
-    if (!S.playing) E.previewChord(S.selChord);
-    if (msg) status(msg);
-  }
-  function renderChordEdit() {
-    const box = $('chordEdit'), i = S.selChord, c = S.loop.chords[i];
-    if (!c) { box.innerHTML = ''; return; }
-    const parts = CC.splitToken(c.token), rel = ((c.root - S.key) % 12 + 12) % 12, type = CC.typeOf(parts), fl = flats();
-    const on = (cond) => (cond ? ' class="on"' : '');
-    const sugg = E.chordOptions(i).slice(0, 10);
-    box.innerHTML = `<div class="ce-head"><span class="glabel">CHORD ${i + 1} OF ${S.loop.chords.length}</span><span class="ce-title">${c.name}</span>
-        <button class="btn hot small" data-act="reroll" title="A different chord that fits between its neighbours. The other chords stay exactly as they are.">TRY ANOTHER</button>
-        <button class="btn small" data-act="add" title="Copy this chord after itself">ADD AFTER</button>
-        <button class="btn small" data-act="remove"${S.loop.chords.length < 2 ? ' disabled' : ''}>REMOVE</button></div>
-      <div class="ce-row"><span class="glabel">FITS HERE</span><div class="seg ce-sugg">${sugg.map((o) => `<button data-tok="${o.tok}">${CC.parseChord(o.tok, S.key, S.mode, 4).name}</button>`).join('')}</div></div>
-      <div class="ce-row"><span class="glabel">ROOT</span><div class="seg" data-part="root">${Array.from({ length: 12 }, (_, r) => `<button data-v="${r}"${on(r === rel)}>${CC.pcName(S.key + r, fl)}</button>`).join('')}</div></div>
-      <div class="ce-row"><span class="glabel">TYPE</span><div class="seg" data-part="type">${CC.TYPES.map((ty, t) => `<button data-v="${t}"${on(t === type)}>${ty[0]}</button>`).join('')}</div></div>
-      <div class="ce-row"><span class="glabel">BASS NOTE</span><div class="seg" data-part="bass">${BASS_NOTES.map(([d, n]) => `<button data-v="${d}"${on(d === c.deg)}>${n}</button>`).join('')}</div>
-        <span class="glabel">LENGTH</span><div class="seg" data-part="len">${LENGTHS.map(([b, n]) => `<button data-v="${b}"${on(b === c.beats)}>${n}</button>`).join('')}</div></div>`;
-  }
-  $('chordEdit').addEventListener('click', (ev) => {
-    const b = ev.target.closest('button');
-    if (!b || !S.loop) return;
-    const i = S.selChord, c = S.loop.chords[i];
-    if (b.dataset.act === 'reroll') { E.rerollChord(i); afterChordEdit(`Chord ${i + 1} is now ${S.loop.chords[i].name}. The others didn't change.`); return; }
-    if (b.dataset.act === 'add') { E.addChordAfter(i); S.selChord = i + 1; afterChordEdit(); return; }
-    if (b.dataset.act === 'remove') { if (E.removeChord(i)) afterChordEdit(); return; }
-    if (b.dataset.tok) { E.setChord(i, CC.splitToken(b.dataset.tok)); afterChordEdit(); return; }
-    const seg = b.closest('[data-part]');
-    if (!seg) return;
-    const v = parseInt(b.dataset.v, 10), parts = CC.splitToken(c.token);
-    const rel = ((c.root - S.key) % 12 + 12) % 12;
-    if (seg.dataset.part === 'len') { E.setChordBeats(i, v); afterChordEdit(); return; }
-    let next = parts;
-    if (seg.dataset.part === 'bass') next.deg = v;
-    else {
-      const type = seg.dataset.part === 'type' ? v : Math.max(0, CC.typeOf(parts));
-      next = CC.partsFor(seg.dataset.part === 'root' ? v : rel, type);
-      next.deg = parts.deg;
-    }
-    E.setChord(i, next);
-    afterChordEdit();
-  });
   function refreshHarmony() { renderKeys(); renderStyles(); renderLayers(); renderProg(); drawRoll(); syncSeg('mode'); syncEdit(); }
   function syncSeg(key) {
     const seg = document.querySelector(`.seg[data-key="${key}"]`);
@@ -281,7 +223,7 @@
   };
 
   // ---------- layers ----------
-  const LAYER_LABEL = { chords: 'CHORDS', bass: 'BASS' };
+  const LAYER_LABEL = { chords: 'CHORDS', lead: 'LEAD', bass: 'BASS', perc: 'PERC' };
   function renderLayers() {
     const box = $('layers');
     const st = E.style();
@@ -292,8 +234,8 @@
       row.className = 'layer';
       row.dataset.l = l;
       const pats = st[l].map((_, i) => `<button data-p="${i}" class="${S.pat[l] === i ? 'on' : ''}">${i + 1}</button>`).join('');
-      const octs = `<span class="mini">OCT</span><div class="seg oct">${[-1, 0, 1].map((o) => `<button data-o="${o}" class="${L.oct === o ? 'on' : ''}">${o > 0 ? '+' + o : o}</button>`).join('')}</div>`;
-      const src = l === 'bass' ? `<div class="seg src">${[['chop', 'CHOP'], ['sub', 'SUB'], ['both', 'CHOP + SUB']].map(([v, n]) => `<button data-s="${v}" class="${L.src === v ? 'on' : ''}">${n}</button>`).join('')}</div>` : '';
+      const octs = l === 'perc' ? '' : `<span class="mini">OCT</span><div class="seg oct">${[-1, 0, 1].map((o) => `<button data-o="${o}" class="${L.oct === o ? 'on' : ''}">${o > 0 ? '+' + o : o}</button>`).join('')}</div>`;
+      const src = l === 'bass' ? `<div class="seg src"><button data-s="chop" class="${L.src === 'chop' ? 'on' : ''}">CHOP</button><button data-s="sub" class="${L.src === 'sub' ? 'on' : ''}">SUB</button></div>` : '';
       row.innerHTML = `<div class="lname" title="Edit this layer's glitch / fx"><i style="background:var(--${l})"></i><span>${LAYER_LABEL[l]}<br><span class="mods"></span></span></div>
         <div class="ctl"><button class="btn small onoff ${L.on ? 'on' : ''}">${L.on ? 'ON' : 'OFF'}</button>
         <input type="range" min="0" max="1" step="0.01" value="${L.level}" title="Level">
@@ -313,7 +255,7 @@
       const sr = row.querySelector('.src');
       if (sr) sr.onclick = (ev) => {
         const b = ev.target.closest('button'); if (!b) return;
-        L.src = b.dataset.s; renderLayers(); // read at play time
+        L.src = b.dataset.s; rebuild(l);
       };
       box.appendChild(row);
     });
@@ -508,7 +450,7 @@
 
   // ---------- remix roll (editable) ----------
   const roll = $('roll');
-  const LAYER_COL = { chords: '#3de0ff', bass: '#ffc94a' };
+  const LAYER_COL = { chords: '#3de0ff', lead: '#ff3d8b', bass: '#ffc94a', perc: '#a59bbd' };
   let rollCache = null, rollDirty = true, lastStep = null;
   function syncEdit() {
     const ed = E.anyEdited();
@@ -520,9 +462,9 @@
 
   // Shared by painting and hit-testing. The pitch range is fixed per loop so it doesn't jump while editing.
   function geom(loop, w, h, dpr) {
-    const top = 18 * dpr, bottom = h - 4 * dpr;
+    const top = 18 * dpr, percH = 18 * dpr, bottom = h - percH - 4 * dpr;
     if (!loop.view) {
-      const ms = loop.events.map((e) => e.midi)
+      const ms = loop.events.filter((e) => e.midi != null).map((e) => e.midi)
         .concat(S.chops.filter((c) => c.pitched).map((c) => Math.round(E.chopMidi(c))));
       let lo = ms.length ? Math.min(...ms) - 3 : 36, hi = ms.length ? Math.max(...ms) + 3 : 84;
       if (hi - lo < 24) { const mid = (lo + hi) / 2; lo = Math.floor(mid - 12); hi = lo + 24; }
@@ -530,9 +472,10 @@
     }
     const { lo, hi } = loop.view;
     const sx = w / loop.total, sy = (bottom - top) / (hi - lo);
-    return { top, bottom, sx, sy, lo, hi, Y: (m) => bottom - (m - lo) * sy, M: (y) => lo + (bottom - y) / sy };
+    return { top, bottom, percTop: h - percH, sx, sy, lo, hi, Y: (m) => bottom - (m - lo) * sy, M: (y) => lo + (bottom - y) / sy };
   }
   function noteRect(e, g, dpr) {
+    if (e.midi == null) return { x: e.step * g.sx, y: g.percTop, w: Math.max(3 * dpr, Math.min(e.dur, 1) * g.sx * 0.8), h: g.sy > 0 ? 16 * dpr : 0 };
     return { x: e.step * g.sx, y: g.Y(e.midi) - g.sy, w: Math.max(3 * dpr, e.dur * g.sx - dpr), h: Math.max(2 * dpr, g.sy - dpr) };
   }
 
@@ -576,19 +519,21 @@
       o.fillStyle = s % 16 === 0 ? 'rgba(255,255,255,0.18)' : s % 4 === 0 ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.025)';
       o.fillRect(s * G.sx, G.top - 4 * dpr, Math.max(1, dpr * (s % 16 ? 0.5 : 1)), h);
     }
+    o.fillStyle = 'rgba(255,255,255,0.04)'; o.fillRect(0, G.percTop, w, h - G.percTop);
     // Filled blocks are what plays (the layer's glitched output); outlines are the layer's notes,
     // which are what you edit. With no glitch they coincide. Muted layers stay visible but dim;
     // layers other than the one being edited fade a little.
     const fade = (l) => (S.layers[l].on ? 1 : 0.22) * (S.target === 'all' || S.target === l ? 1 : 0.55);
-    ['bass', 'chords'].forEach((l) => {
+    ['bass', 'chords', 'lead', 'perc'].forEach((l) => {
       (loop.out[l] || []).forEach((e) => {
         const r = noteRect(e, G, dpr);
         o.globalAlpha = (0.4 + e.vel * 0.55) * fade(l);
         o.fillStyle = LAYER_COL[l];
-        o.fillRect(r.x, r.y, r.w, r.h);
+        o.fillRect(r.x, r.y, r.w, e.midi == null ? r.h - 2 * dpr : r.h);
         if (e.rev) { o.fillStyle = 'rgba(12,16,20,0.55)'; for (let k = 0; k < r.w; k += 4 * dpr) o.fillRect(r.x + k, r.y, 2 * dpr, r.h); }
         if (e.tape) { o.fillStyle = 'rgba(255,255,255,0.6)'; o.fillRect(r.x, r.y + r.h - dpr, r.w, dpr); }
       });
+      if (l === 'perc') return;
       o.lineWidth = dpr;
       (loop.base[l] || []).forEach((e) => {
         const r = noteRect(e, G, dpr);
@@ -608,15 +553,17 @@
   };
   // Hits a layer's notes (not the glitched output). The layer being edited wins over the others.
   function hitTest(p) {
-    const order = S.target === 'bass' ? ['bass', 'chords'] : ['chords', 'bass'];
+    let order = p.y >= p.G.percTop ? ['perc'] : ['lead', 'chords', 'bass'];
+    if (S.target !== 'all' && order.includes(S.target)) order = [S.target].concat(order.filter((l) => l !== S.target));
     for (const l of order) {
       const ev = S.loop.base[l] || [];
       for (let i = ev.length - 1; i >= 0; i--) {
         const e = ev[i];
         const r = noteRect(e, p.G, p.dpr);
-        // notes hit by row (same math as placing a note) so boundaries never disagree
-        if (p.x >= r.x && p.x <= r.x + r.w && e.midi === Math.floor(p.G.M(p.y))) {
-          return { e, l, edge: r.w > 10 * p.dpr && p.x > r.x + r.w - 7 * p.dpr };
+        // pitched notes hit by row (same math as placing a note) so boundaries never disagree
+        const inY = e.midi == null ? p.y >= r.y && p.y <= r.y + r.h : e.midi === Math.floor(p.G.M(p.y));
+        if (p.x >= r.x && p.x <= r.x + r.w && inY) {
+          return { e, l, edge: e.midi != null && r.w > 10 * p.dpr && p.x > r.x + r.w - 7 * p.dpr };
         }
       }
     }
@@ -641,13 +588,14 @@
     let e, mode;
     if (hit) { e = hit.e; mode = hit.edge ? 'resize' : 'move'; }
     else {
+      const perc = p.y >= p.G.percTop || S.drawLayer === 'perc';
       const unit = S.snap || 0.25;
       const step = Math.max(0, Math.min(S.loop.total - unit, Math.floor(p.x / p.G.sx / unit) * unit));
-      const layer = S.drawLayer;
-      e = E.newEvent(layer, step, Math.floor(p.G.M(p.y)), 4);
+      const layer = perc ? 'perc' : S.drawLayer;
+      e = E.newEvent(layer, step, Math.floor(p.G.M(p.y)), layer === 'chords' ? 4 : perc ? 1 : Math.max(unit, 1));
       if (!e) { status('No chops in the pool to draw with.'); return; }
       S.loop.base[layer].push(e);
-      mode = 'resize';
+      mode = perc ? 'move' : 'resize';
     }
     if (!hit) E.editedLayer(e.layer);
     drag.e = e; drag.mode = mode; drag.x0 = p.x; drag.y0 = p.y; drag.created = !hit;
@@ -668,8 +616,10 @@
     if (Math.abs(p.x - drag.x0) + Math.abs(p.y - drag.y0) > 3) drag.moved = true;
     if (drag.mode === 'move') {
       e.step = Math.max(0, Math.min(total - 0.25, snapTo(drag.step0 + dx, ev.shiftKey)));
-      const m = drag.midi0 + Math.round((drag.y0 - p.y) / p.G.sy);
-      if (m !== e.midi) { e.midi = m; E.previewEvent(e); }
+      if (e.midi != null) {
+        const m = drag.midi0 + Math.round((drag.y0 - p.y) / p.G.sy);
+        if (m !== e.midi) { e.midi = m; E.previewEvent(e); }
+      }
     } else {
       const min = ev.shiftKey || !S.snap ? 0.25 : S.snap;
       e.dur = Math.max(min, Math.min(total - e.step, snapTo(drag.dur0 + dx, ev.shiftKey)));
@@ -688,7 +638,7 @@
 
   // ---------- animation ----------
   const scope = $('scope');
-  let scopeBuf = null;
+  let scopeBuf = null, lastChip = -1;
   function frame() {
     requestAnimationFrame(frame);
     if (!E.ctx) return;
@@ -815,7 +765,7 @@
   $('midiBtn').onclick = () => {
     if (!S.loop || !S.loop.events.length) return;
     CC.download(new Blob([E.midi()], { type: 'audio/midi' }), baseName() + '.mid');
-    status('Exported MIDI: Chords (ch 1), Bass (ch 2).');
+    status('Exported MIDI: Chords (ch 1), Lead (ch 2), Bass (ch 3).');
   };
   $('chopsBtn').onclick = () => {
     if (!S.chops.length) return;
@@ -830,8 +780,7 @@
   window.addEventListener('resize', () => { peaks = null; drawWave(); drawRoll(); });
 
   // ---------- boot ----------
-  S.drawLayer = 'chords'; S.snap = 1;
-  E.setProg(CC.colorizeProg(E.pool()[0], S.mode, S.color));
+  S.drawLayer = 'lead'; S.snap = 1;
   syncControls();
   renderProg(); drawWave(); drawRoll(); renderPiano();
 })(window.CC);
