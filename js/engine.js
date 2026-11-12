@@ -10,7 +10,9 @@ window.CC = window.CC || {};
 
   // Every layer has its own glitch (g) and fx settings. Non-essential processing defaults to off
   // so chops sound like the original sample.
-  const defG = () => ({ stutter: 0, reverse: 0, scatter: 0, gate: 1, tape: 0, hold: false, pick: 'near', bits: 16, rate: 0 });
+  // stutSize: repeat length in 16ths (0 = mixed); burst: 'short' stutters the start of a note, 'full' all of it;
+  // rise: chance a stutter climbs in pitch (0 = stutters stay on the note's pitch).
+  const defG = () => ({ stutter: 0, stutSize: 0, burst: 'short', rise: 0, reverse: 0, scatter: 0, gate: 1, tape: 0, hold: false, pick: 'near', bits: 16, rate: 0 });
   const defFx = () => ({ cutoff: 1, res: 0, delay: 0, verb: 0, drive: 0 });
   CC.defG = defG; CC.defFx = defFx;
 
@@ -172,8 +174,15 @@ window.CC = window.CC || {};
   E.newGroove = function () {
     const st = E.style();
     S.seed = (Math.random() * 1e9) >>> 0;
-    LAYERS.forEach((l) => { S.pat[l] = Math.floor(Math.random() * st[l].length); });
+    // half the time a preset, otherwise one of the first 200 generated patterns
+    LAYERS.forEach((l) => { S.pat[l] = Math.random() < 0.5 ? Math.floor(Math.random() * st[l].length) : st[l].length + Math.floor(Math.random() * 200); });
     E.regen();
+  };
+
+  // Pattern number i of a layer: the style's presets first, then generated ones without end.
+  E.patternFor = function (l, i) {
+    const st = E.style(), k = st[l].length, n = i == null ? S.pat[l] : i;
+    return n < k ? st[l][n] : CC.genPattern(st, l, n - k + 1);
   };
 
   // ---------- per-layer settings ----------
@@ -189,13 +198,14 @@ window.CC = window.CC || {};
     if (key === 'pick') ts.forEach(repick);
     E.reglitch(ts);
   };
-  // Random glitch amounts for the targeted layer(s) only.
+  // Random glitch amounts for the targeted layer(s) only. Scatter, rise and tape stop are the
+  // settings that move pitch, so they're left exactly where they are.
   E.glitchIt = function () {
     const r = Math.random;
     E.targets().forEach((l) => {
       Object.assign(S.layers[l].g, {
-        stutter: Math.round(r() * 60) / 100, reverse: Math.round(r() * 50) / 100, scatter: Math.round(r() * 50) / 100,
-        gate: Math.round((0.35 + r() * 0.65) * 100) / 100, tape: Math.round(r() * 40) / 100,
+        stutter: Math.round(r() * 70) / 100, reverse: Math.round(r() * 50) / 100,
+        gate: Math.round((0.35 + r() * 0.65) * 100) / 100,
       });
     });
     E.reglitch(E.targets());
@@ -285,7 +295,7 @@ window.CC = window.CC || {};
     const rng = layerRng(l), pick = chooser(l, rng, P);
     const chordIdx = new Int16Array(total);
     timeline.forEach((c, k) => { for (let s = c.start; s < c.start + c.len && s < total; s++) chordIdx[s] = k; });
-    const p = st[l][S.pat[l] % st[l].length];
+    const p = E.patternFor(l);
     let grp = LAYERS.indexOf(l) * 100000;
     const ev = [];
     // Walks the pattern: fn(step, char, dur, chord) for each note start. Holds ('-') run until the
@@ -342,7 +352,7 @@ window.CC = window.CC || {};
         const third = Math.max(1, Math.floor(pc.length / 3));
         const from = lc === 'k' ? 0 : lc === 's' ? Math.min(pc.length - 1, third) : Math.max(0, pc.length - third);
         const o = pc[Math.min(pc.length - 1, from + rng.int(third))];
-        ev.push({ layer: l, step: s, dur: lc === 'h' ? 1 : 2, midi: null, chop: o.i, vel: c === lc ? 0.7 : 1, pan: lc === 'h' ? (rng() - 0.5) * 0.5 : 0, grp: grp++ });
+        ev.push({ layer: l, step: s, dur: lc === 'h' ? 1 : 2, midi: null, shift: 12 * L.perc.oct, chop: o.i, vel: c === lc ? 0.7 : 1, pan: lc === 'h' ? (rng() - 0.5) * 0.5 : 0, grp: grp++ });
       }
     }
     return ev;
@@ -388,12 +398,16 @@ window.CC = window.CC || {};
         else if (kind === 2 && pitched) e.chop = choose(P.pitched, u(3)).i;
         else if (kind === 3) { e.step += 0.5; e.dur = Math.max(0.25, e.dur - 0.5); }
       }
+      // Stutter: retriggers of the same chop at the same pitch. It only climbs when RISE says so.
       if (u(4) < G.stutter && !e.synth) {
-        const n = choose([2, 3, 4, 4, 6, 8], u(5)), span = Math.min(e.dur, choose([1, 1, 2, 2, 4], u(6))), sub = span / n, asc = u(7) < 0.25;
+        const span = G.burst === 'full' ? e.dur : Math.min(e.dur, choose([1, 1, 2, 2, 4], u(6)));
+        const n = G.stutSize ? Math.max(2, Math.round(span / G.stutSize)) : choose([2, 3, 4, 4, 6, 8], u(5));
+        const sub = span / n, asc = u(7) < G.rise;
         for (let k = 0; k < n; k++) {
+          const last = k === n - 1 && G.burst !== 'full';
           out.push(Object.assign({}, e, {
             step: e.step + k * sub,
-            dur: k === n - 1 ? e.dur - k * sub : sub * 0.8,
+            dur: last ? e.dur - k * sub : sub * 0.8,
             midi: e.midi == null ? null : e.midi + (asc ? Math.round((k * 12) / n) : 0),
             vel: e.vel * (0.6 + (0.4 * (k + 1)) / n),
           }));
@@ -520,7 +534,7 @@ window.CC = window.CC || {};
     const bufs = G ? E.buf(G.bits, G.rate) : E.buf(16, 0);
     const buf = e.rev ? bufs.rev : bufs.fwd, sr = buf.sampleRate;
     const len = (chop.end - chop.start) / sr, offs = e.offs || 0;
-    const rate = e.midi == null ? 1 : Math.min(8, Math.max(1 / 16, Math.pow(2, (e.midi - E.chopMidi(chop)) / 12)));
+    const rate = e.midi == null ? Math.pow(2, (e.shift || 0) / 12) : Math.min(8, Math.max(1 / 16, Math.pow(2, (e.midi - E.chopMidi(chop)) / 12)));
     const off0 = e.rev ? (buf.length - chop.end) / sr : chop.start / sr;
     const offset = off0 + offs * len;
     const avail = (len * (1 - offs)) / rate;
@@ -566,13 +580,14 @@ window.CC = window.CC || {};
     return { src: o1, src2: o2, choke, start: t, end, chop: -1, layer: e.layer };
   }
 
-  E.choke = function (v, t) {
+  E.choke = function (v, t, fade) {
     if (!v || v.end <= t) return;
+    const f = fade || 0.006;
     try {
       v.choke.gain.setValueAtTime(1, t);
-      v.choke.gain.linearRampToValueAtTime(0, t + 0.006);
-      v.src.stop(t + 0.008);
-      if (v.src2) v.src2.stop(t + 0.008);
+      v.choke.gain.linearRampToValueAtTime(0, t + f);
+      v.src.stop(t + f + 0.002);
+      if (v.src2) v.src2.stop(t + f + 0.002);
     } catch (err) { /* already stopped */ }
   };
 
@@ -746,7 +761,9 @@ window.CC = window.CC || {};
   let shotRR = 0;
   E.shotChops = (midi) => S.chops.map((c, i) => ({ c, i }))
     .filter((o) => (o.c.pitched || o.c.note != null) && Math.round(E.chopMidi(o.c)) === midi);
-  E.playShot = function (midi) {
+  // A key let go (MIDI KEY OFF = CUT): fade that key's one-shot out.
+  E.releaseShot = function (midi) { if (E.ctx) E.choke(keyVoices[midi], E.ctx.currentTime + 0.003, 0.04); };
+  E.playShot = function (midi, vel) {
     E.init(); E.resume();
     if (!S.chops.length || !S.src) return -1;
     const t = E.ctx.currentTime + 0.003;
@@ -756,7 +773,7 @@ window.CC = window.CC || {};
     if (exact.length) chop = exact[shotRR++ % exact.length].i;
     else { chop = E.nearestChop(midi); m = midi; }
     if (chop < 0) return -1;
-    keyVoices[midi] = E.playEvent(E.ctx, E.chain.keys, { layer: 'perc', chop, midi: m, dur: 1e4, vel: 0.9, clean: true }, t, E.stepDur());
+    keyVoices[midi] = E.playEvent(E.ctx, E.chain.keys, { layer: 'shot', chop, midi: m, dur: 1e4, vel: vel == null ? 0.9 : vel, clean: true }, t, E.stepDur());
     return chop;
   };
 

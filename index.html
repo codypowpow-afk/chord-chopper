@@ -68,6 +68,16 @@
       <span class="hint">Lit keys = notes found in the sample (they play the chop untouched) · others play the nearest chop repitched · keys A W S E D F T G Y H U J K O L P · Z / X octave</span>
       <span id="kbOct" class="lcd-inline"></span>
     </div>
+    <div class="midi-row">
+      <span class="glabel">MIDI KEYBOARD</span>
+      <button id="midiBtn2" class="btn small" title="Play the chopped notes from a MIDI keyboard">CONNECT MIDI</button>
+      <select id="midiIn" title="Which MIDI input to listen to" disabled><option value="all">All inputs</option></select>
+      <span class="glabel">OCTAVE</span>
+      <div class="seg" data-key="midiOct" data-num><button data-v="-2">-2</button><button data-v="-1">-1</button><button data-v="0">0</button><button data-v="1">+1</button><button data-v="2">+2</button></div>
+      <span class="glabel">KEY OFF</span>
+      <div class="seg" data-key="midiOff"><button data-v="ring" title="Let each one-shot play to the end of its chop">RING</button><button data-v="cut" title="Fade the note out when you let go of the key">CUT</button></div>
+      <span id="midiStat" class="lcd-inline">not connected</span>
+    </div>
     <div class="piano" id="piano"></div>
   </section>
 
@@ -142,6 +152,17 @@
         <div class="col">
           <div class="sec-head"><span class="num">5</span><span class="sec-title">GLITCH</span><span class="hint" id="glitchFor"></span></div>
           <div class="group slider"><div class="glabel">STUTTER <span data-lout="stutter"></span></div><input type="range" data-group="g" data-lkey="stutter" min="0" max="1" step="0.01"></div>
+          <div class="row tight stut-row">
+            <div class="group">
+              <div class="glabel">STUTTER SIZE</div>
+              <div class="seg" data-group="g" data-lkey="stutSize" data-num><button data-v="0" title="A mix of repeat sizes">MIX</button><button data-v="1">1/16</button><button data-v="0.5">1/32</button><button data-v="0.25">1/64</button></div>
+            </div>
+            <div class="group">
+              <div class="glabel">BURST</div>
+              <div class="seg" data-group="g" data-lkey="burst"><button data-v="short" title="Stutter the start of a note, then let it play">SHORT</button><button data-v="full" title="Stutter the whole note">FULL NOTE</button></div>
+            </div>
+          </div>
+          <div class="group slider"><div class="glabel">STUTTER RISE <span data-lout="rise"></span></div><input type="range" data-group="g" data-lkey="rise" min="0" max="1" step="0.01" title="Chance a stutter climbs in pitch. At 0 stutters never change pitch."></div>
           <div class="group slider"><div class="glabel">REVERSE <span data-lout="reverse"></span></div><input type="range" data-group="g" data-lkey="reverse" min="0" max="1" step="0.01"></div>
           <div class="group slider"><div class="glabel">SCATTER <span data-lout="scatter"></span></div><input type="range" data-group="g" data-lkey="scatter" min="0" max="1" step="0.01"></div>
           <div class="group slider"><div class="glabel">GATE <span data-lout="gate"></span></div><input type="range" data-group="g" data-lkey="gate" min="0" max="1" step="0.01"></div>
@@ -166,7 +187,7 @@
               <div class="seg" data-group="g" data-lkey="rate" data-num><button data-v="0">OFF</button><button data-v="22050">22k</button><button data-v="11025">11k</button><button data-v="6000">6k</button></div>
             </div>
           </div>
-          <div class="row tight"><button id="glitchLayerBtn" class="btn" title="Shift+G: random glitch for the layer(s) being edited">RANDOM GLITCH</button><button id="clearLayerBtn" class="btn" title="Glitch and FX back to 0 for the layer(s) being edited">CLEAR</button></div>
+          <div class="row tight"><button id="glitchLayerBtn" class="btn" title="Shift+G: random stutter, reverse and gate for the layer(s) being edited (pitch settings are left alone)">RANDOM GLITCH</button><button id="clearLayerBtn" class="btn" title="Glitch and FX back to 0 for the layer(s) being edited">CLEAR</button></div>
         </div>
         <div class="col">
           <div class="sec-head"><span class="num">6</span><span class="sec-title">FX</span><span class="hint" id="fxFor"></span></div>

@@ -13,8 +13,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("Chord Chopper")]
 [assembly: AssemblyProduct("Chord Chopper")]
 [assembly: AssemblyDescription("Glitch sample chopper that remixes notes onto chord progressions")]
-[assembly: AssemblyVersion("1.2.0.0")]
-[assembly: AssemblyFileVersion("1.2.0.0")]
+[assembly: AssemblyVersion("1.3.0.0")]
+[assembly: AssemblyFileVersion("1.3.0.0")]
 
 namespace ChordChopper
 {
@@ -155,6 +155,15 @@ namespace ChordChopper
                     MemoryStream ms = new MemoryStream();
                     res.CopyTo(ms); res.Dispose(); ms.Position = 0;
                     args.Response = env.CreateWebResourceResponse(ms, 200, "OK", "Content-Type: " + MimeType(path) + "\r\nCache-Control: no-cache");
+                };
+                // Web MIDI (for playing chops from a MIDI keyboard) asks for permission; the only page
+                // this window ever shows is the embedded app, so allow MIDI for it without a prompt.
+                core.PermissionRequested += delegate (object s, Microsoft.Web.WebView2.Core.CoreWebView2PermissionRequestedEventArgs args)
+                {
+                    if (args.Uri.StartsWith("https://chordchopper.local/") &&
+                        (args.PermissionKind == Microsoft.Web.WebView2.Core.CoreWebView2PermissionKind.MidiSystemExclusiveMessages ||
+                         args.PermissionKind == Microsoft.Web.WebView2.Core.CoreWebView2PermissionKind.UnknownPermission))
+                        args.State = Microsoft.Web.WebView2.Core.CoreWebView2PermissionState.Allow;
                 };
                 core.DocumentTitleChanged += delegate { Text = core.DocumentTitle; };
                 core.Navigate("https://chordchopper.local/index.html");

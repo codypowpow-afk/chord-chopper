@@ -382,5 +382,91 @@ window.CC = window.CC || {};
       glitch: { stutter: 0.35, reverse: 0.2, scatter: 0.2, gate: 0.6, tape: 0.2 },
     }),
   ];
+  // ---------- generated patterns ----------
+  // Pattern numbers past a style's presets are generated, so every layer has an endless list to
+  // browse. Number n always gives the same pattern for that style and layer. Most are the style's
+  // presets (or, sometimes, another style's) put through a few mutations, so they keep the feel;
+  // some are written from scratch.
+  const strHash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+  const HIT = {
+    chords: (c) => c === 'x' || c === 'X',
+    lead: (c) => /[0-9r]/.test(c),
+    bass: (c) => /[x3567o]/.test(c),
+    perc: (c) => /[kshKSH]/.test(c),
+  };
+  function newHit(layer, r, arr, i) {
+    if (layer === 'chords') return r() < 0.2 ? 'X' : 'x';
+    if (layer === 'bass') return r.pick(['x', 'x', 'x', '5', 'o', '3', '7']);
+    if (layer === 'perc') return r.pick(['h', 'h', 's', 'k']);
+    // lead: step from the previous note in the line
+    let prev = 2;
+    for (let k = i - 1; k >= 0; k--) if (/[0-9]/.test(arr[k])) { prev = +arr[k]; break; }
+    return r() < 0.1 ? 'r' : String(Math.max(0, Math.min(9, prev + r.pick([-2, -1, -1, 1, 1, 2, 0]))));
+  }
+  function mutate(arr, layer, r, times) {
+    const isHit = HIT[layer], L = arr.length, holds = layer !== 'perc';
+    for (let m = 0; m < times; m++) {
+      const kind = r.int(7);
+      if (kind === 0) { // shift the whole pattern a step or two (syncopation)
+        const d = r.pick([-2, -1, 1, 2]);
+        const out = arr.map((_, i) => arr[(i - d + L) % L]);
+        arr.splice(0, L, ...out);
+      } else if (kind === 1) { // drop a note (a held note before it carries on)
+        const hits = arr.map((c, i) => (isHit(c) && i > 0 ? i : -1)).filter((i) => i >= 0);
+        if (hits.length > 1) { const i = r.pick(hits); arr[i] = holds && arr[i - 1] !== '.' ? '-' : '.'; }
+      } else if (kind === 2 || kind === 3) { // add a note, usually off the beat
+        const i = r() < 0.6 ? r.int(L / 2) * 2 + 1 : r.int(L);
+        arr[i] = newHit(layer, r, arr, i);
+      } else if (kind === 4 && holds) { // legato <-> staccato on one spot
+        const i = r.int(L);
+        if (arr[i] === '.') arr[i] = '-';
+        else if (arr[i] === '-') arr[i] = '.';
+      } else if (kind === 5) { // copy one half over the other
+        const h = L / 2, from = r() < 0.5 ? 0 : h;
+        for (let i = 0; i < h; i++) arr[(from + h + i) % L] = arr[from + i];
+      } else if (layer === 'lead') { // move the line up / down, or run it backwards
+        if (r() < 0.6) { const d = r.pick([-2, -1, 1, 2]); for (let i = 0; i < L; i++) if (/[0-9]/.test(arr[i])) arr[i] = String(Math.max(0, Math.min(9, +arr[i] + d))); }
+        else { const notes = arr.filter((c) => /[0-9]/.test(c)).reverse(); let k = 0; for (let i = 0; i < L; i++) if (/[0-9]/.test(arr[i])) arr[i] = notes[k++]; }
+      } else if (layer === 'perc') { // hat density
+        for (let i = 1; i < L; i += 2) if (arr[i] === '.' && r() < 0.35) arr[i] = 'h';
+      }
+    }
+    return arr;
+  }
+  function fresh(layer, r, st) {
+    const L = r() < 0.3 ? 32 : 16, arr = new Array(L).fill('.');
+    const dens = 0.25 + r() * 0.6;
+    if (layer === 'perc') {
+      const half = st.bpm >= 130 && r() < 0.7;
+      for (let i = 0; i < L; i++) {
+        const s = i % 16;
+        if (s === 0 || (s === 10 && r() < 0.6) || (s % 2 === 0 && r() < dens * 0.25)) arr[i] = 'k';
+        if (half ? s === 8 : s === 4 || s === 12) arr[i] = 'S';
+        else if (arr[i] === '.' && r() < dens * (s % 2 ? 0.45 : 0.7)) arr[i] = r() < 0.12 ? 's' : 'h';
+      }
+      return arr;
+    }
+    for (let i = 0; i < L; i++) {
+      const w = i % 4 === 0 ? 0.75 : i % 2 === 0 ? 0.4 : 0.2;
+      if (i === 0 || r() < w * dens) {
+        arr[i] = newHit(layer, r, arr, i);
+        if (layer === 'bass' && i % 16 === 0) arr[i] = 'x';
+        const hold = r.int(layer === 'lead' ? 3 : 6);
+        for (let k = 1; k <= hold && i + k < L; k++) arr[i + k] = '-';
+        i += hold;
+      }
+    }
+    return arr;
+  }
+  CC.genPattern = function (st, layer, n) {
+    const r = CC.rng((strHash(st.id + '/' + layer) + Math.imul(n, 2654435761)) >>> 0);
+    const mode = r();
+    let src;
+    if (mode < 0.6) src = r.pick(st[layer]);
+    else if (mode < 0.8) src = r.pick(r.pick(CC.STYLES)[layer]);
+    if (!src) return fresh(layer, r, st).join('');
+    return mutate(src.split(''), layer, r, 1 + r.int(3)).join('');
+  };
+
   CC.styleById = (id) => CC.STYLES.find((s) => s.id === id) || CC.STYLES[0];
 })(window.CC);

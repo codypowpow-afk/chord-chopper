@@ -31,6 +31,9 @@ the original.
    - **One-shot keys:** a keyboard spanning the sample's range. Lit keys have chops at that note and play them
      untouched (round robin when there are several). Other keys play the nearest chop repitched. Use the mouse or
      A W S E D F T G Y H U J K O L P, with Z / X to shift the octave.
+   - **MIDI keyboard:** press CONNECT MIDI and play the chopped notes from any MIDI keyboard (velocity sensitive).
+     Choose an input or listen to all of them, shift by up to ±2 octaves, and choose RING (one-shots play out)
+     or CUT (letting go fades the note). Works in the Windows app, Chrome and Edge.
 2. **Key + progression.** 12 keys × major / minor and **20 style presets**: Pop, Trap, Lo-Fi, R&B / Neo-Soul, Jazz,
    Gospel, House, Liquid DnB, Future Bass, EDM Anthem, Synthwave, Rock, Blues, Reggae, Bossa Nova, Funk,
    K-Pop / J-Pop, Cinematic, Afrobeats, Drill. Each preset sets tempo, swing, glitch amounts and pattern sets, and
@@ -41,8 +44,13 @@ the original.
    - **AUTO-CYCLE** swaps the progression every 1 / 2 / 4 loops. **ROAM STYLES** also jumps to a random style.
    - Click a chord to hear it voiced with your chops.
 3. **Remix.** Chops are repitched (sampler style) onto voice-led chords, an arp / lead line over the chord tones,
-   a bass line, and chop percussion built from the unpitched chops. Each layer has on/off, level, octave and
-   pattern variants. Bass can be chops or a sine sub.
+   a bass line, and chop percussion built from the unpitched chops. Each layer has on/off, level, octave
+   (−2 to +2, PERC included) and patterns. Bass can be chops or a sine sub.
+   - **Patterns without end:** after the style's presets, ▶ keeps going into generated patterns (GEN #1, #2, …)
+     and 🎲 jumps to a random one. Each number always gives the same pattern for that style and layer, and
+     the strip next to it shows the pattern's first bars. Most are mutations of the style's own presets (shifted,
+     thinned, filled in, made legato or staccato, halves copied, lead lines moved or reversed), so they keep the
+     style's feel; some borrow another style's or are written from scratch. Only that layer changes.
    - **Edit the remix:** click empty space in the roll to add a note on the DRAW layer (drag to stretch it), drag
      a note to move it in time or pitch, drag its right edge to stretch it, and right-click or Alt-click to delete.
      Snap is 1/8, 1/16, 1/32 or off (hold Shift to ignore it). You edit a layer's notes (outlines). The filled
@@ -53,7 +61,10 @@ the original.
    then show and change that layer only, live while it plays. Every other layer keeps its exact notes and sound.
    **ALL LAYERS** sets all four at once; settings that differ between layers are marked MIX. Layer rows show
    GLITCH / FX tags when they have settings, and **CLEAR** puts the selected layer back to 0.
-   - **Glitch:** stutter (2–8× retriggers, sometimes rising), reverse, scatter (octave jumps, mid-chop starts,
+   - **Stutter** retriggers the same chop at the same pitch. STUTTER SIZE sets the repeat (a mix, 1/16, 1/32 or
+     1/64), BURST stutters the start of a note or the FULL NOTE, and STUTTER RISE (default 0) is the only thing
+     that makes stutters climb in pitch.
+   - **Glitch:** reverse, scatter (octave jumps, mid-chop starts,
      random chop swaps, 32nd shoves), gate and end-of-loop tape stop. Each note keeps its own random draws, so
      raising a slider only adds glitches on top of the current pattern instead of reshuffling it.
    - **Chop pick** (nearest pitch / random / cycle / one chop) reassigns chops without moving any notes.
@@ -61,12 +72,13 @@ the original.
    - **FX:** low-pass filter + resonance, drive, and sends into a shared 3/16 ping-pong delay and reverb. Master
      volume is global.
    - **EVOLVE** re-rolls every layer's glitches each loop while the notes stay put. **GLITCH IT** / Shift+G
-     randomises the selected layer(s).
+     randomises stutter, reverse and gate on the selected layer(s). It leaves scatter, rise and tape stop (the
+     settings that move pitch) alone.
    - Previews, chord auditions and the one-shot keys always play the clean sample.
 
 **Export:** rendered WAV (1–8 loops), 3-track MIDI (chords / lead / bass), or a zip of every chop named by its note.
 
-Keys: `Space` play/stop · `N` new progression · `Shift+G` glitch the selected layer(s) · `R` new groove · `←/→` select chop · `A`–`P` one-shot keys · `Z/X` key octave.
+Keys: `Space` play/stop · `N` new progression · `Shift+G` random stutter / reverse / gate on the selected layer(s) · `R` new groove · `←/→` select chop · `A`–`P` one-shot keys · `Z/X` key octave.
 
 ## Build the exe
 

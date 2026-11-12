@@ -122,6 +122,16 @@ input[type=range] { accent-color: var(--hot); }
 .layer .lname i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
 .layer .ctl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .layer input[type=range] { width: 90px; }
+.gen { display: flex; align-items: center; gap: 4px; }
+.gen .gname { font: 700 10px Consolas, monospace; color: var(--lcd); background: var(--lcd-bg); padding: 3px 6px; border-radius: 3px; min-width: 64px; text-align: center; }
+.strip { display: inline-flex; gap: 1px; height: 12px; align-items: stretch; }
+.strip i { width: 5px; background: rgba(255,255,255,0.06); border-radius: 1px; }
+.strip i.h { background: var(--lc); }
+.strip i.d { background: var(--lc); opacity: .35; }
+.strip i.bar { margin-left: 3px; }
+.midi-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 2px; }
+.midi-row .seg button { padding: 3px 7px; font-size: 10px; }
+#midiStat.live { color: #fff; background: var(--hot); }
 .layer .seg button { padding: 3px 7px; font-size: 10px; }
 .mini { font-size: 9px; color: var(--ink-soft); font-weight: 700; letter-spacing: .5px; }
 
@@ -162,3 +172,4 @@ input[type=range] { accent-color: var(--hot); }
   .transport { order: 3; }
   .group.grow { min-width: 0; }
 }
+.stut-row { margin: 0 0 10px; }

@@ -44,7 +44,7 @@
   }
 
   function onKeyChange(key) {
-    if (key === 'drawLayer' || key === 'snap') return;
+    if (key === 'drawLayer' || key === 'snap' || key === 'midiOct' || key === 'midiOff') return;
     if (['chopMode', 'grid', 'sens', 'minLen'].includes(key)) { rechopSoon(); return; }
     if (key === 'mode') { E.newProg(); refreshHarmony(); return; }
     if (key === 'cycle') return;
@@ -233,19 +233,27 @@
       const row = document.createElement('div');
       row.className = 'layer';
       row.dataset.l = l;
-      const pats = st[l].map((_, i) => `<button data-p="${i}" class="${S.pat[l] === i ? 'on' : ''}">${i + 1}</button>`).join('');
-      const octs = l === 'perc' ? '' : `<span class="mini">OCT</span><div class="seg oct">${[-1, 0, 1].map((o) => `<button data-o="${o}" class="${L.oct === o ? 'on' : ''}">${o > 0 ? '+' + o : o}</button>`).join('')}</div>`;
+      const k = st[l].length, cur = S.pat[l];
+      const pats = st[l].map((_, i) => `<button data-p="${i}" class="${cur === i ? 'on' : ''}">${i + 1}</button>`).join('');
+      const gen = `<div class="gen"><button class="btn small" data-g="-1" title="Previous pattern">◀</button><span class="gname">${cur < k ? 'PRESET ' + (cur + 1) : 'GEN #' + (cur - k + 1)}</span><button class="btn small" data-g="1" title="Next pattern (past the presets they're generated)">▶</button><button class="btn small" data-g="r" title="Jump to a random generated pattern">🎲</button>${strip(E.patternFor(l), l)}</div>`;
+      const octs = `<span class="mini">OCT</span><div class="seg oct">${[-2, -1, 0, 1, 2].map((o) => `<button data-o="${o}" class="${L.oct === o ? 'on' : ''}">${o > 0 ? '+' + o : o}</button>`).join('')}</div>`;
       const src = l === 'bass' ? `<div class="seg src"><button data-s="chop" class="${L.src === 'chop' ? 'on' : ''}">CHOP</button><button data-s="sub" class="${L.src === 'sub' ? 'on' : ''}">SUB</button></div>` : '';
       row.innerHTML = `<div class="lname" title="Edit this layer's glitch / fx"><i style="background:var(--${l})"></i><span>${LAYER_LABEL[l]}<br><span class="mods"></span></span></div>
         <div class="ctl"><button class="btn small onoff ${L.on ? 'on' : ''}">${L.on ? 'ON' : 'OFF'}</button>
         <input type="range" min="0" max="1" step="0.01" value="${L.level}" title="Level">
-        <span class="mini">PATTERN</span><div class="seg pats">${pats}</div>${octs}${src}</div>`;
+        <span class="mini">PATTERN</span><div class="seg pats">${pats}</div>${gen}${octs}${src}</div>`;
       row.querySelector('.lname').onclick = () => setTarget(S.target === l ? 'all' : l);
       row.querySelector('.onoff').onclick = () => { L.on = !L.on; E.updateChain(); renderLayers(); drawRoll(); };
       row.querySelector('input').oninput = (ev) => { L.level = parseFloat(ev.target.value); E.updateChain(); };
       row.querySelector('.pats').onclick = (ev) => {
         const b = ev.target.closest('button'); if (!b) return;
         S.pat[l] = +b.dataset.p; rebuild(l);
+      };
+      row.querySelector('.gen').onclick = (ev) => {
+        const b = ev.target.closest('button'); if (!b) return;
+        if (b.dataset.g === 'r') S.pat[l] = k + Math.floor(Math.random() * 9999);
+        else S.pat[l] = Math.max(0, S.pat[l] + parseInt(b.dataset.g, 10));
+        rebuild(l);
       };
       const oct = row.querySelector('.oct');
       if (oct) oct.onclick = (ev) => {
@@ -260,6 +268,12 @@
       box.appendChild(row);
     });
     syncLayerControls(); markMods();
+  }
+  // The first one or two bars of a pattern as a strip: bright = note, dim = held, empty = rest.
+  function strip(p, l) {
+    const isHit = (c) => c !== '.' && c !== '-';
+    const cells = p.slice(0, 32).split('').map((c, i) => `<i class="${isHit(c) ? 'h' : c === '-' && l !== 'perc' ? 'd' : ''}${i === 16 ? ' bar' : ''}"></i>`).join('');
+    return `<span class="strip" style="--lc:var(--${l})" title="${p}">${cells}</span>`;
   }
   // Pattern / octave / source changes rebuild only that layer's notes.
   function rebuild(l) {
@@ -428,9 +442,9 @@
     }
     $('kbOct').textContent = `KEYS ${CC.midiName(kbBase)}–${CC.midiName(kbBase + 15)}`;
   }
-  function pressKey(m) {
+  function pressKey(m, vel) {
     if (!S.src) { status('Load a sample first.'); return; }
-    const chop = E.playShot(m);
+    const chop = E.playShot(m, vel);
     const el = $('piano').querySelector(`[data-m="${m}"]`);
     if (el) { el.classList.add('down'); setTimeout(() => el.classList.remove('down'), 140); }
     const pad = $('chops').children[chop];
@@ -447,6 +461,52 @@
     const k = ev.target.closest('[data-m]'); if (k) pressKey(+k.dataset.m);
   });
   window.addEventListener('pointerup', () => { pianoDown = false; });
+
+  // ---------- MIDI keyboard ----------
+  // Note on plays the one-shot for that note (shifted by OCTAVE) at the key's velocity. With
+  // KEY OFF = CUT, letting go fades the note; RING lets the chop play out.
+  S.midiOct = 0; S.midiOff = 'ring';
+  let midi = null, midiFlash = 0;
+  function midiInputs() { return midi ? Array.from(midi.inputs.values()) : []; }
+  function renderMidi() {
+    const sel = $('midiIn'), ins = midiInputs(), keep = sel.value;
+    sel.innerHTML = '<option value="all">All inputs</option>' + ins.map((i) => `<option value="${i.id}">${i.name}</option>`).join('');
+    sel.value = ins.some((i) => i.id === keep) ? keep : 'all';
+    sel.disabled = !midi;
+    ins.forEach((i) => { i.onmidimessage = onMidi; });
+    $('midiStat').textContent = midi ? (ins.length ? `${ins.length} input${ins.length > 1 ? 's' : ''} ready` : 'no inputs found: plug one in') : 'not connected';
+    $('midiBtn2').textContent = midi ? 'MIDI ON' : 'CONNECT MIDI';
+    $('midiBtn2').classList.toggle('on', !!midi);
+  }
+  function onMidi(ev) {
+    const sel = $('midiIn').value;
+    if (sel !== 'all' && ev.target.id !== sel) return;
+    const [st, note, v] = ev.data, cmd = st & 0xf0, m = note + 12 * S.midiOct;
+    if (cmd === 0x90 && v > 0) {
+      pressKey(m, 0.25 + (v / 127) * 0.75);
+      const el = $('midiStat');
+      el.textContent = `${CC.midiName(m, flats())} · vel ${v}`;
+      el.classList.add('live');
+      clearTimeout(midiFlash);
+      midiFlash = setTimeout(() => el.classList.remove('live'), 160);
+    } else if (cmd === 0x80 || (cmd === 0x90 && v === 0)) {
+      if (S.midiOff === 'cut') E.releaseShot(m);
+    }
+  }
+  $('midiBtn2').onclick = async () => {
+    if (midi) return;
+    E.init(); E.resume();
+    if (!navigator.requestMIDIAccess) { status('MIDI is not available here: use the Windows app, Chrome or Edge.'); return; }
+    try {
+      midi = await navigator.requestMIDIAccess({ sysex: false });
+    } catch (err) {
+      status('MIDI access was refused: ' + (err.message || err));
+      return;
+    }
+    midi.onstatechange = renderMidi;
+    renderMidi();
+    status('MIDI connected. Play your keyboard: lit keys play the chops untouched.');
+  };
 
   // ---------- remix roll (editable) ----------
   const roll = $('roll');
