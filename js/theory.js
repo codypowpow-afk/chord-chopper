@@ -173,6 +173,35 @@ window.CC = window.CC || {};
     return out.map((o) => (o.n > 1 ? `${o.t}:${o.n * 4}` : o.t)).join(' ');
   };
 
+  // ---------- moving a chord along the scale ----------
+  // Moves a chord's root to the next degree of the key's scale, up (dir 1) or down (-1), and gives
+  // it that degree's own diatonic quality at the same level of colour (triad, 7th, 9th, add9, 6;
+  // sus chords stay sus). A chord outside the scale lands on the nearest degree that way. The
+  // chord's length is kept.
+  const SCALES = { maj: [0, 2, 4, 5, 7, 9, 11], min: [0, 2, 3, 5, 7, 8, 10] };
+  CC.stepChord = function (token, mode, dir) {
+    const m = RX.exec(token.trim());
+    if (!m) return token;
+    const scale = SCALES[mode] || SCALES.maj;
+    const rel = (((DEG[m[2].toUpperCase()] + (m[1] === 'b' ? -1 : m[1] === '#' ? 1 : 0)) % 12) + 12) % 12;
+    let d = scale.indexOf(rel);
+    if (d >= 0) d = (d + dir + 7) % 7;
+    else if (dir > 0) d = Math.max(0, scale.findIndex((x) => x > rel));
+    else for (d = 6; scale[d] > rel; d--);
+    const r = scale[d], iv = (k) => (scale[(d + k) % 7] - r + 12) % 12;
+    const minor = iv(2) === 3, dim = iv(4) === 6, seventh = iv(6);
+    const old = m[3], sus = /^(sus2|sus4|7sus4)$/.test(old);
+    let suffix;
+    if (sus) suffix = old;
+    else if (['7', 'maj7', 'ø', 'ø7', 'm7b5', '°7', 'dim7'].includes(old)) suffix = dim ? (seventh === 10 ? 'ø' : '°7') : seventh === 11 ? 'maj7' : '7';
+    else if (['9', 'maj9', '11', '13'].includes(old)) suffix = dim ? 'ø' : seventh === 11 ? 'maj9' : '9';
+    else if (old === 'add9' || old === '6') suffix = dim ? '°' : old;
+    else suffix = dim ? '°' : '';
+    let num = ROOT_NAME[r];
+    if ((minor || dim) && !sus) num = num.toLowerCase();
+    return num + suffix + (m[4] ? ':' + m[4] : '');
+  };
+
   // ---------- styles ----------
   const T = (s) => s.replace(/\s+/g, '');
   const style = (o) => {

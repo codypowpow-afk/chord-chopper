@@ -106,6 +106,9 @@ input[type=range] { accent-color: var(--hot); }
 .chip:hover { border-color: var(--cyan); }
 .chip .nm { font: 800 16px Consolas, monospace; color: var(--lcd); display: block; white-space: nowrap; }
 .chip .rm { font-size: 10px; color: var(--ink-soft); display: block; margin-top: 2px; }
+.chip .steps { display: flex; justify-content: center; gap: 4px; margin-top: 4px; }
+.chip .steps button { background: var(--btn); color: var(--ink); border: 1px solid var(--edge); border-radius: 3px; font-size: 9px; line-height: 1; padding: 3px 10px; cursor: pointer; }
+.chip .steps button:hover { background: var(--cyan); color: #001; }
 .chip.now { background: var(--hot); border-color: var(--hot); }
 .chip.now .nm, .chip.now .rm { color: #fff; }
 

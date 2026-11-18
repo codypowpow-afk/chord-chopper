@@ -41,6 +41,10 @@ the original.
    chords), so they work in any key.
    - **NEW PROGRESSION** picks a random one from the style. ◀ ▶ step through your history.
    - Picking a style sets tempo, swing, patterns and progressions. It never turns glitch effects on.
+   - **▼ ▲ under each chord** move it one note down / up the key's scale (in C major: C → Dm → Em → F …). It takes
+     that degree's own chord type at the same level of colour (plain, 7th, 9th, add9, 6; sus stays sus). A chord
+     outside the key lands on the nearest scale note in that direction. The other chords stay the same, the
+     patterns are rebuilt, and ◀ undoes the step.
    - **AUTO-CYCLE** swaps the progression every 1 / 2 / 4 loops. **ROAM STYLES** also jumps to a random style.
    - Click a chord to hear it voiced with your chops.
 3. **Remix.** Chops are repitched (sampler style) onto voice-led chords, an arp / lead line over the chord tones,

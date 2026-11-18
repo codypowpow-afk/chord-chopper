@@ -184,9 +184,18 @@
       const d = document.createElement('div');
       d.className = 'chip';
       d.style.flexGrow = c.len ? c.len / 16 : c.beats / 4;
-      d.innerHTML = `<span class="nm">${c.name}</span><span class="rm">${c.roman}</span>`;
+      d.innerHTML = `<span class="nm">${c.name}</span><span class="rm">${c.roman}</span>
+        <span class="steps"><button data-d="-1" title="Down one note in the scale">▼</button><button data-d="1" title="Up one note in the scale">▲</button></span>`;
       d.title = 'Hear this chord with your chops';
-      d.onclick = () => E.previewChord(k);
+      d.onclick = (ev) => {
+        const b = ev.target.closest('button[data-d]');
+        if (!b) { E.previewChord(k); return; }
+        const was = c.name;
+        E.stepChord(k, parseInt(b.dataset.d, 10));
+        renderProg(); drawRoll(); syncEdit();
+        if (!S.playing) E.previewChord(k);
+        status(`Chord ${k + 1}: ${was} → ${S.loop.chords[k].name}. The other chords are unchanged.`);
+      };
       box.appendChild(d);
     });
     $('sampleProgBtn').classList.toggle('on', !!S.sampleProg && S.progStr === S.sampleProg);

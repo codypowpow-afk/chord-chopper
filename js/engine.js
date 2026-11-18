@@ -151,6 +151,14 @@ window.CC = window.CC || {};
     for (let i = 0; i < 6 && pool.length > 1 && p === S.progStr; i++) p = pool[Math.floor(Math.random() * pool.length)];
     E.setProg(p);
   };
+  // Move chord i one note up / down the key's scale. The progression is rebuilt (patterns are
+  // regenerated); every other chord stays as it was. Recorded in history, so ◀ undoes it.
+  E.stepChord = function (i, dir) {
+    const toks = (S.progStr || E.pool()[0]).split(/\s+/).filter(Boolean);
+    if (!toks[i]) return;
+    toks[i] = CC.stepChord(toks[i], S.mode, dir);
+    E.setProg(toks.join(' '));
+  };
   E.histStep = function (dir) {
     const h = S.history[S.histPos + dir];
     if (!h) return false;
